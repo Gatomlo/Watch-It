@@ -217,3 +217,8 @@ select.fld{appearance:auto}
 /* --- Bandeau d'installation --- */
 .inst{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 14px;border-radius:14px;background:var(--surface);border:1px solid var(--line)}
 .inst .btn{width:auto;height:44px;flex:none;padding:0 16px}
+
+/* --- Bande-annonce intégrée --- */
+button.play{border:0;padding:0;cursor:pointer}
+.tframe{position:relative;width:100%;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#000}
+.tframe iframe{position:absolute;inset:0;width:100%;height:100%;border:0}

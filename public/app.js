@@ -71,7 +71,7 @@
   window.addEventListener('appinstalled', function () { deferredInstall = null; if (isAuthenticated) { toast('mAIwatch est installée.'); safeRender(); } });
   var KNOWN = {};           // fiches légères vues dans les résultats : id -> item
   try { var a = JSON.parse(localStorage.getItem('maiwatch-av') || 'null'); if (a && a.map) { AV = a.map; AV_AT = a.at || 0; } } catch (e) {}
-  try { var pv0 = JSON.parse(localStorage.getItem('maiwatch-pv') || 'null'); if (pv0) pv0.forEach(function (p) { PV[p.id] = p; }); PVL = pv0; } catch (e) {}
+  try { var pv0 = JSON.parse(localStorage.getItem('maiwatch-pv') || 'null'); if (pv0) { pv0.forEach(function (p) { PV[p.id] = p; }); PVL = pv0; } } catch (e) {}
 
   var ui = {
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
@@ -260,13 +260,49 @@
   function logoOf(id) { var p = PV[id]; return p && p.logo ? '<img class="pl" src="' + IMG + 'w45' + esc(p.logo) + '" alt="" loading="lazy">' : '<span class="dot" style="background:var(--muted)"></span>'; }
   function pnameOf(id) { return PV[id] ? PV[id].name : 'Plateforme ' + id; }
   function loadProviders(force) {
-    if (!force && Object.keys(PV).length) return Promise.resolve();
+    if (!force && PVL.length) { expandSelected(); return Promise.resolve(); }
     return api('/api/providers?region=' + encodeURIComponent(S.settings.region)).then(function (list) {
       PV = {}; PVL = list; list.forEach(function (p) { PV[p.id] = p; });
       try { localStorage.setItem('maiwatch-pv', JSON.stringify(list)); } catch (e) {}
+      expandSelected();
     }).catch(function () {});
   }
   function platsOn() { return S.settings.platforms; }
+  function famKey(name) {
+    var n = norm(name || '').replace(/\b(with|avec) ads?\b|\bstandard\b|\bbasic\b|\bamazon channel\b|\bapple tv channel\b|\broku premium channel\b|\bamazon\b|\bhbo\b|\bplus\b/g, ' ').replace(/\s+/g, ' ').trim();
+    return n || norm(name || '');
+  }
+  function famIds(id) {
+    var p = PV[id], key = p ? famKey(p.name) : null, out = [id];
+    if (key) PVL.forEach(function (q) { if (q.id !== id && famKey(q.name) === key) out.push(q.id); });
+    return out;
+  }
+  // Familles : [{ key, name, ids[] }] à partir d'une liste d'identifiants (ordre de PVL, puis inconnus).
+  function famsOf(ids) {
+    var out = [], idx = {};
+    ids.forEach(function (id) {
+      var p = PV[id], key = p ? famKey(p.name) : 'id' + id;
+      if (idx[key] == null) { idx[key] = out.length; out.push({ key: key, name: '', ids: [], first: id }); }
+      out[idx[key]].ids.push(id);
+    });
+    out.forEach(function (f) {
+      var best = f.ids.map(function (i) { return PV[i]; }).filter(Boolean).sort(function (a, b) { return a.name.length - b.name.length; })[0];
+      f.name = best ? best.name : 'Plateforme ' + f.first; f.first = best ? best.id : f.first;
+    });
+    return out;
+  }
+  function selFams() { return famsOf(platsOn()); }
+  function expandSelected() {
+    if (!S || !PVL.length) return;
+    var cur = platsOn(), add = [];
+    cur.forEach(function (id) { famIds(id).forEach(function (x) { if (cur.indexOf(x) < 0 && add.indexOf(x) < 0) add.push(x); }); });
+    if (add.length) { S.settings.platforms = cur.concat(add); save(); }
+  }
+  function toggleIds(arr, ids) {
+    var any = ids.some(function (i) { return arr.indexOf(i) >= 0; });
+    ids.forEach(function (i) { var j = arr.indexOf(i); if (any) { if (j >= 0) arr.splice(j, 1); } else if (j < 0) arr.push(i); });
+    return !any;
+  }
   function avail(it) { var a = AV[it.id]; return a ? a.f.filter(function (p) { return platsOn().indexOf(p) >= 0; }) : []; }
   function availKnown(it) { return !!AV[it.id]; }
 
@@ -316,7 +352,7 @@
     var st = scr === 'seen' ? 'seen' : 'todo';
     return S.list.filter(function (e) { return e.status === st; });
   }
-  function nFilters() { return ui.plats.length + ui.genres.length + ui.cols.length; }
+  function nFilters() { return famsOf(ui.plats).length + ui.genres.length + ui.cols.length; }
 
   // ===================== Pièces d'interface =====================
   function poster(it, cls) {
@@ -388,7 +424,7 @@
   }
   function filterBar(extra) {
     var toks = [];
-    ui.plats.forEach(function (k) { toks.push({ k: 'plat', v: k, l: pnameOf(k) }); });
+    famsOf(ui.plats).forEach(function (f) { toks.push({ k: 'plat', v: f.ids.join(','), l: f.name }); });
     ui.genres.forEach(function (g) { toks.push({ k: 'genre', v: g, l: g }); });
     ui.cols.forEach(function (c) { toks.push({ k: 'col', v: c, l: colName(c) || 'Liste' }); });
     var n = toks.length;
@@ -416,7 +452,7 @@
     var cs = pool(ui.sheet.scr), N = cs.filter(function (c) { return passes(c); }).length;
     var pc = {};
     cs.filter(function (c) { return passes(c, 'plat'); }).forEach(function (c) { var a = AV[c.id]; if (a) a.f.forEach(function (k) { pc[k] = (pc[k] || 0) + 1; }); });
-    var plats = platsOn().map(function (k) { return crow('plat', k, pnameOf(k), pc[k] || 0, ui.plats.indexOf(k) >= 0, logoOf(k)); }).join('');
+    var plats = selFams().map(function (f) { var n = 0; cs.filter(function (c) { return passes(c, 'plat'); }).forEach(function (c) { var a = AV[c.id]; if (a && a.f.some(function (x) { return f.ids.indexOf(x) >= 0; })) n++; }); return crow('plat', f.ids.join(','), f.name, n, f.ids.some(function (x) { return ui.plats.indexOf(x) >= 0; }), logoOf(f.first)); }).join('');
     var colGroup = '';
     if (ui.sheet.scr !== 'sug' && S.collections.length) {
       var cc = {};
@@ -502,7 +538,7 @@
     var tr = d && d.trailer ? 'https://www.youtube.com/watch?v=' + encodeURIComponent(d.trailer) : null;
     var h = hueOf(it.t);
     var hero = '<div class="hero" style="background:' + (it.p ? 'linear-gradient(180deg,var(--shade),var(--bg)),url(' + IMG + 'w780' + esc(it.p) + ') center/cover' : 'linear-gradient(170deg,hsl(' + h + ' 38% 36%) 0%,hsl(' + h + ' 22% 18%) 55%,var(--bg) 100%)') + '">' + back() +
-      (tr ? '<a class="play" href="' + tr + '" target="_blank" rel="noopener" aria-label="Voir la bande-annonce">' + I('play') + '</a><span class="hl">Bande-annonce</span>'
+      (tr ? '<button class="play" data-act="trailer" data-k="' + esc(d.trailer) + '" aria-label="Voir la bande-annonce">' + I('play') + '</button><span class="hl">Bande-annonce</span>'
         : (d ? '<span class="hl">Pas de bande-annonce trouvée · <a href="' + yt + '" target="_blank" rel="noopener">chercher sur YouTube</a></span>' : '')) + '</div>';
     var where = '';
     if (d) {
@@ -734,10 +770,10 @@
   // Réglages : un menu de rubriques, chacune dans sa page (ui.sset).
   function platRows() {
     var q = norm(ui.pvq);
-    var list = PVL.filter(function (p) { return !q || norm(p.name).indexOf(q) >= 0; });
     if (!PVL.length) return '<span class="help">Chargement des plateformes…</span>';
-    if (!list.length) return '<span class="help">Aucune plateforme ne correspond à « ' + esc(ui.pvq) + ' ».</span>';
-    return list.map(function (p) { return crow('mp', p.id, p.name, platsOn().indexOf(p.id) >= 0 ? 'Choisie' : '', platsOn().indexOf(p.id) >= 0, logoOf(p.id)); }).join('');
+    var fams = famsOf(PVL.map(function (p) { return p.id; })).filter(function (f) { return !q || norm(f.name).indexOf(q) >= 0; });
+    if (!fams.length) return '<span class="help">Aucune plateforme ne correspond à « ' + esc(ui.pvq) + ' ».</span>';
+    return fams.map(function (f) { var on = f.ids.some(function (x) { return platsOn().indexOf(x) >= 0; }); return crow('mp', f.ids.join(','), f.name, on ? 'Choisie' : '', on, logoOf(f.first)); }).join('');
   }
   function mrow(key, icon, title, sub) {
     return '<button class="mi" data-act="sset" data-v="' + key + '">' + I(icon, '') + '<span class="ct"><b>' + title + '</b><span>' + sub + '</span></span>' + I('chev') + '</button>';
@@ -745,8 +781,8 @@
   function subHeader(title) { return '<header class="top tight">' + back() + '<h1 class="s">' + title + '</h1></header>'; }
 
   function setMenu() {
-    var T = CFG.tmdbKey || {}, A = CFG.ai, np = platsOn().length;
-    var plSub = np ? np + ' choisie' + (np > 1 ? 's' : '') + ' : ' + esc(platsOn().slice(0, 3).map(pnameOf).join(', ') + (np > 3 ? '…' : '')) : '<span class="w">Aucune choisie</span>';
+    var T = CFG.tmdbKey || {}, A = CFG.ai, np = selFams().length;
+    var plSub = np ? np + ' choisie' + (np > 1 ? 's' : '') + ' : ' + esc(selFams().slice(0, 3).map(function (f) { return f.name; }).join(', ') + (np > 3 ? '…' : '')) : '<span class="w">Aucune choisie</span>';
     var tmSub = T.hasKey ? 'Clé enregistrée' : '<span class="w">À configurer : sans clé, rien ne s’affiche</span>';
     var aiSub = A.hasKey ? esc(PROVS[A.provider]) + (A.tested ? ' · testé' : ' · non testé') : 'Facultatif · non configuré';
     var P = ui.push, pSub = P.st === 'on' ? 'Activées sur cet appareil' : (P.st === 'denied' ? 'Bloquées par le navigateur' : (P.st === 'unsupported' ? 'Indisponibles ici' : 'Désactivées'));
@@ -762,18 +798,19 @@
   }
 
   function setPlats() {
-    var mine = platsOn();
+    var fams = selFams();
     var region = '<select id="region" class="fld" aria-label="Pays">' + REGIONS.map(function (r) { return '<option value="' + r[0] + '"' + (S.settings.region === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; }).join('') + '</select>';
-    var sel = mine.length ? mine.map(function (id) {
-      return '<div class="card"><span style="display:flex;align-items:center">' + logoOf(id) + '</span><span class="ct"><b>' + esc(pnameOf(id)) + '</b></span><button class="link" style="min-height:44px" data-act="tog" data-k="mp" data-v="' + id + '" aria-label="Retirer ' + esc(pnameOf(id)) + '">Retirer</button></div>';
+    var sel = fams.length ? fams.map(function (f) {
+      return '<div class="card"><span style="display:flex;align-items:center">' + logoOf(f.first) + '</span><span class="ct"><b>' + esc(f.name) + '</b></span><button class="link" style="min-height:44px" data-act="tog" data-k="mp" data-v="' + f.ids.join(',') + '" aria-label="Retirer ' + esc(f.name) + '">Retirer</button></div>';
     }).join('') : '<div class="empty">Aucune plateforme choisie pour l’instant.<br>Cochez ci-dessous celles auxquelles vous êtes abonnés.</div>';
     var region0 = (REGIONS.filter(function (r) { return r[0] === S.settings.region; })[0] || [S.settings.region, S.settings.region])[1];
+    var nAll = famsOf(PVL.map(function (p) { return p.id; })).length;
     return subHeader('Plateformes') +
-      '<div class="group"><div class="sec"><h2>Mes plateformes</h2><span class="st ' + (mine.length ? 'ok' : 'no') + '">' + mine.length + ' choisie' + (mine.length > 1 ? 's' : '') + '</span></div>' + sel + '</div>' +
+      '<div class="group"><div class="sec"><h2>Mes plateformes</h2><span class="st ' + (fams.length ? 'ok' : 'no') + '">' + fams.length + ' choisie' + (fams.length > 1 ? 's' : '') + '</span></div>' + sel + '</div>' +
       '<div class="group"><h2>Pays</h2>' + region + '<span class="help">Les plateformes proposées et les disponibilités dépendent du pays. Changer de pays remet la liste à zéro.</span></div>' +
-      '<div class="group"><div class="sec"><h2>Toutes les plateformes · ' + esc(region0) + '</h2><span class="help">' + PVL.length + ' disponible' + (PVL.length > 1 ? 's' : '') + '</span></div>' +
+      '<div class="group"><div class="sec"><h2>Toutes les plateformes · ' + esc(region0) + '</h2><span class="help">' + nAll + ' disponible' + (nAll > 1 ? 's' : '') + '</span></div>' +
       '<label for="pvq" style="position:absolute;left:-9999px">Chercher une plateforme</label><input id="pvq" class="fsearch" type="search" autocomplete="off" placeholder="Chercher (Netflix, Max, Canal+…)" value="' + esc(ui.pvq) + '">' +
-      '<div id="pvlist">' + platRows() + '</div><span class="help">Source : TMDB / JustWatch. Si votre plateforme manque, cherchez-la sous son nom d’origine (par exemple « Max » ou « HBO Max »).</span></div>';
+      '<div id="pvlist">' + platRows() + '</div><span class="help">Source : TMDB / JustWatch. Les variantes d’une même plateforme (par exemple « avec publicités ») sont regroupées : choisir « Amazon Prime Video » couvre toutes ses versions.</span></div>';
   }
 
   function setProfils() {
@@ -935,6 +972,12 @@
       var it = entry(s.id) || KNOWN[s.id]; if (!it) return '';
       return '<div class="scrim" data-scrim="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Noter"><h3>Votre note pour « ' + esc(it.t) + ' » ?</h3><span class="help" style="margin-top:-8px">Note de ' + esc(pname(me)) + ' : elle améliore les suggestions.</span>' + starRow(0, 'rate', 'data-id="' + esc(s.id) + '"', 'big') + '<button class="btn ghost" data-act="rate" data-id="' + esc(s.id) + '" data-v="0">Marquer vu sans noter</button></div></div>';
     }
+    if (s.type === 'trailer') {
+      var tk = encodeURIComponent(s.key);
+      return '<div class="scrim" data-scrim="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Bande-annonce"><div class="fhead"><h3>Bande-annonce</h3><button class="icon" data-act="closesheet" aria-label="Fermer">' + I('close') + '</button></div>' +
+        '<div class="tframe"><iframe src="https://www.youtube-nocookie.com/embed/' + tk + '?autoplay=1&rel=0&playsinline=1&modestbranding=1" title="Bande-annonce" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>' +
+        '<a class="link" style="align-self:center" href="https://www.youtube.com/watch?v=' + tk + '" target="_blank" rel="noopener">Ne démarre pas ? Ouvrir dans YouTube</a></div></div>';
+    }
     if (s.type === 'draw') {
       var d = s.id ? entry(s.id) : null;
       return '<div class="scrim" data-scrim="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Tirage au sort">' + (d ? '<span class="help" style="text-transform:uppercase;letter-spacing:.08em;font-weight:700">Ce soir, ce sera</span><div style="display:flex;gap:14px">' + poster(d) + '<div class="rb"><h3>' + esc(d.t) + '</h3><span class="meta">' + meta(d) + '</span>' + badges(d) + '</div></div><button class="btn" data-act="open" data-id="' + esc(d.id) + '">Voir la fiche</button><button class="btn ghost" data-act="draw">Un autre</button>' : '<h3>Rien à tirer</h3><span class="help">Aucun titre de la liste ne correspond à vos filtres et à vos plateformes.</span>') + '<button class="link" data-act="closesheet" style="align-self:center">Fermer</button></div></div>';
@@ -969,7 +1012,7 @@
     renderDeferred = false;
     var fb = document.querySelector('.fbody'), fs = fb ? fb.scrollTop : 0;
     appEl.innerHTML = V[ui.screen]() + (MAIN[ui.screen] ? nav() : '');
-    layer.innerHTML = sheetHtml();
+    if (!(ui.sheet && ui.sheet.type === 'trailer' && layer.querySelector('.tframe'))) layer.innerHTML = sheetHtml();
     var fb2 = document.querySelector('.fbody'); if (fb2) fb2.scrollTop = fs;
     if (keepScroll) window.scrollTo(0, y); else window.scrollTo(0, 0);
   }
@@ -1078,8 +1121,9 @@
     tog: function (d) {
       var k = d.k, v = d.v;
       if (k === 'type') ui.type = v;
-      else if (k === 'mp') { var p = Number(v), i = S.settings.platforms.indexOf(p); if (i >= 0) S.settings.platforms.splice(i, 1); else S.settings.platforms.push(p); save(); detectChanges(); toast(pnameOf(p) + (i >= 0 ? ' retirée de vos plateformes' : ' ajoutée à vos plateformes') + ' (' + S.settings.platforms.length + ' au total)'); }
-      else { var arr = k === 'plat' ? ui.plats : (k === 'col' ? ui.cols : ui.genres), val = k === 'plat' ? Number(v) : v, j = arr.indexOf(val); if (j >= 0) arr.splice(j, 1); else arr.push(val); }
+      else if (k === 'mp') { var mids = String(v).split(',').map(Number), mname = famsOf(mids)[0].name, added = toggleIds(S.settings.platforms, mids); save(); detectChanges(); toast(mname + (added ? ' ajoutée à vos plateformes' : ' retirée de vos plateformes') + ' (' + selFams().length + ' au total)'); }
+      else if (k === 'plat') { toggleIds(ui.plats, String(v).split(',').map(Number)); }
+      else { var arr = k === 'col' ? ui.cols : ui.genres, j = arr.indexOf(v); if (j >= 0) arr.splice(j, 1); else arr.push(v); }
       render(true);
     },
     openfilter: function () { ui.sheet = { type: 'filter', scr: ui.screen }; ui.fq = ''; ui.fexp = false; render(true); },
@@ -1169,6 +1213,10 @@
         CFG.tmdb = r.tmdb; CFG.tmdbKey = r.tmdbKey; ui.tmdbMsg = 'Clé TMDB vérifiée et enregistrée.'; ui.keyEdit.tmdb = false;
         ui.sug = {}; PV = {}; PVL = []; return loadProviders(true).then(function () { AV = {}; AV_AT = 0; refreshAvail(); });
       }).catch(function (e) { ui.tmdbMsg = e.message; }).finally(function () { ui.tmdbBusy = false; render(true); });
+    },
+    trailer: function (d) {
+      if (navigator.onLine === false) { toast('Hors ligne : la bande-annonce a besoin du réseau.'); return; }
+      ui.sheet = { type: 'trailer', key: d.k }; render(true);
     },
     install: function () {
       if (!deferredInstall) { ui.sset = 'install'; if (ui.screen !== 'settings') { go('settings', true); ui.sset = 'install'; } render(); return; }
