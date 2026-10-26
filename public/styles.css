@@ -255,3 +255,8 @@ button.play{border:0;padding:0;cursor:pointer}
 
 /* --- Match à deux : carte plus compacte pour laisser voir les boutons, résumé dessous --- */
 .mcard .mp{width:min(190px,50vw);font-size:48px}
+
+/* --- Qui veut le voir --- */
+.avs{display:inline-flex;gap:3px;flex:none}
+.rowx{display:flex;flex-direction:column;gap:6px}
+.rowx .want{align-self:flex-start;margin-left:82px;height:36px;padding:0 14px;font-size:13px}

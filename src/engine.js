@@ -43,7 +43,7 @@ function sourcesOf(state, user) {
       if (v > 0) src.push({ e, w: v, l: "aimé" });
       else if (v < 0) src.push({ e, w: v, l: "pas aimé" });
     } else {
-      src.push({ e, w: e.by === user ? 1 : 0.4, l: "dans votre liste" });
+      src.push({ e, w: (e.w ? e.w[user] : e.by === user) ? 1 : 0.4, l: "dans votre liste" });
     }
   });
   ((state.dismissed && state.dismissed[user]) || []).forEach((id) => {
@@ -323,7 +323,7 @@ async function upcoming(state, me) {
   const maps = await tmdb.genreMaps();
   const liked = {};
   state.list.forEach((e) => {
-    const w = e.status === "seen" ? rating(state, e.r && e.r[me]) : (e.by === me ? 1 : 0.4);
+    const w = e.status === "seen" ? rating(state, e.r && e.r[me]) : ((e.w ? e.w[me] : e.by === me) ? 1 : 0.4);
     if (w > 0) (e.g || []).forEach((g) => { liked[g] = (liked[g] || 0) + w; });
   });
   const top = Object.keys(liked).sort((a, b) => liked[b] - liked[a]).slice(0, 4);

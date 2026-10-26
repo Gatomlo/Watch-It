@@ -412,8 +412,13 @@
   }
 
   function ava(u) { return '<span class="ava ' + u + '" aria-label="Ajouté par ' + esc(pname(u)) + '">' + esc(initial(u)) + '</span>'; }
+  // Qui veut le voir : e.w = { M:true, E:true } ; sans e.w, seul celui qui l'a ajouté.
+  function wants(e, u) { return e.w ? !!e.w[u] : e.by === u; }
+  function avas(e) { return '<span class="avs">' + ['M', 'E'].filter(function (u) { return wants(e, u); }).map(function (u) { return '<span class="ava ' + u + '" aria-label="' + esc(pname(u)) + ' veut le voir">' + esc(initial(u)) + '</span>'; }).join('') + '</span>'; }
   function rowHtml(it, e) {
-    return '<button class="row" data-act="open" data-id="' + esc(it.id) + '">' + poster(it) + '<span class="rb"><span class="rt"><span class="title">' + esc(it.t) + '</span>' + (e ? ava(e.by) : '') + '</span><span class="meta">' + meta(it) + '</span>' + badges(it) + '</span></button>';
+    var b = '<button class="row" data-act="open" data-id="' + esc(it.id) + '">' + poster(it) + '<span class="rb"><span class="rt"><span class="title">' + esc(it.t) + '</span>' + (e ? avas(e) : '') + '</span><span class="meta">' + meta(it) + '</span>' + badges(it) + '</span></button>';
+    if (e && e.status === 'todo' && !wants(e, me)) return '<div class="rowx">' + b + '<button class="chip want" data-act="want" data-id="' + esc(it.id) + '" data-u="' + me + '">+ Moi aussi</button></div>';
+    return b;
   }
   function back() { return '<button class="icon" data-act="back" aria-label="Retour">' + I('back') + '</button>'; }
   function nav() {
@@ -579,12 +584,16 @@
           (nx && airedUpTo(a2, nx) ? '<button class="btn" data-act="epnext" data-id="' + esc(id) + '">J’ai vu S' + nx.s + 'E' + nx.e + '</button>' : '') + note2 + '</div>';
       }
     }
+    var wg = '';
+    if (e && e.status === 'todo') {
+      wg = '<div class="group"><h2>Qui veut le voir ?</h2><div class="chips">' + ['M', 'E'].map(function (u) { var on = wants(e, u); return '<button class="chip p' + (on ? ' on' : '') + '" data-act="want" data-id="' + esc(id) + '" data-u="' + u + '" aria-pressed="' + on + '">' + esc(pname(u)) + '</button>'; }).join('') + '</div><span class="help">Ajouté par ' + esc(pname(e.by)) + ' le ' + fmtDate(e.at) + '</span></div>';
+    }
     var colg = '';
     if (e) {
       colg = '<div class="group"><h2>Listes</h2>' + (S.collections.length ? '<div class="chips">' + S.collections.map(function (c) { var on = (e.l || []).indexOf(c.id) >= 0; return '<button class="chip p' + (on ? ' on' : '') + '" data-act="coltog" data-id="' + esc(id) + '" data-c="' + esc(c.id) + '" aria-pressed="' + on + '">' + esc(c.name) + '</button>'; }).join('') + '</div>' : '<span class="help">Aucune liste pour l’instant : « Halloween », « Avec les enfants », « Vacances »…</span>') +
         '<div style="display:flex;gap:8px"><label for="newcol-d" style="position:absolute;left:-9999px">Nouvelle liste</label><input id="newcol-d" class="fld" maxlength="30" placeholder="Nouvelle liste" autocomplete="off"><button class="btn ghost" style="flex:none;width:auto;height:48px" data-act="coladd" data-id="' + esc(id) + '">Créer</button></div></div>';
     }
-    var note = e ? '<div class="group"><h2>Notre note</h2><label for="note" style="position:absolute;left:-9999px">Note sur ce titre</label><textarea id="note" class="ta" rows="2" placeholder="Pourquoi on veut le voir, qui l’a conseillé…" data-note="' + esc(id) + '">' + esc(e.note || '') + '</textarea><span class="help">Ajouté par ' + esc(pname(e.by)) + ' le ' + fmtDate(e.at) + '</span></div>' : '';
+    var note = e ? '<div class="group"><h2>Notre note</h2><label for="note" style="position:absolute;left:-9999px">Note sur ce titre</label><textarea id="note" class="ta" rows="2" placeholder="Pourquoi on veut le voir, qui l’a conseillé…" data-note="' + esc(id) + '">' + esc(e.note || '') + '</textarea>' + (e.status === 'todo' ? '' : '<span class="help">Ajouté par ' + esc(pname(e.by)) + ' le ' + fmtDate(e.at) + '</span>') + '</div>' : '';
     var dock;
     var rm = '<button class="icon" style="width:52px;height:52px;border-radius:26px" data-act="remove" data-id="' + esc(id) + '" aria-label="Supprimer de la liste">' + I('trash') + '</button>';
     if (!e) dock = '<button class="btn" data-act="add" data-id="' + esc(id) + '">Ajouter à ma liste</button><button class="btn ghost" style="flex:none;width:auto" data-act="already" data-id="' + esc(id) + '">Déjà vu</button>';
@@ -593,7 +602,7 @@
     var gen = (it.g || []).join(', ');
     return hero + '<div class="group" style="gap:6px;margin-top:-6px"><h1>' + esc(it.t) + '</h1><span class="meta">' + meta(it) + (gen ? ' · ' + esc(gen) : '') + '</span></div>' +
       (d && d.ov ? '<p class="syn">' + esc(d.ov) + '</p>' : (d ? '' : '<div class="skel" style="height:72px"></div>')) +
-      '<div class="group"><div class="sec"><h2>Où le voir</h2><span class="help">Source : TMDB / JustWatch</span></div>' + where + '</div>' + prog + epGuide(id, d, e) + rates + colg + note + '<div class="dock">' + dock + '</div>';
+      '<div class="group"><div class="sec"><h2>Où le voir</h2><span class="help">Source : TMDB / JustWatch</span></div>' + where + '</div>' + prog + epGuide(id, d, e) + rates + wg + colg + note + '<div class="dock">' + dock + '</div>';
   };
 
   // Guide des épisodes d'une série : une saison à la fois, avec les épisodes déjà vus cochés.
@@ -1171,6 +1180,14 @@
     sset: function (d) { ui.keyEdit = {}; ui.keyConfirm = null; ui.sset = d.v; if (d.v === 'plats') { loadProviders(); ui.pvq = ''; } if (d.v === 'notif') refreshPush(); render(); },
     back: function () { if (ui.screen === 'settings' && ui.sset !== 'menu') { ui.sset = 'menu'; ui.keyEdit = {}; ui.keyConfirm = null; render(); return; } var h = ui.hist.pop(); if (h) { ui.screen = h.screen; ui.detail = h.detail; ui.sheet = null; render(true); } else go('home'); },
     open: function (d) { openDetail(d.id); },
+    want: function (d) {
+      var e = entry(d.id); if (!e) return;
+      var w = e.w || (function () { var o = {}; o[e.by] = true; return o; })();
+      if (w[d.u]) { if (Object.keys(w).filter(function (k) { return w[k]; }).length < 2) { toast('Au moins une personne doit vouloir le voir.'); return; } delete w[d.u]; }
+      else w[d.u] = true;
+      e.w = w; save(); render(true);
+      toast(w[d.u] ? pname(d.u) + ' veut aussi le voir' : pname(d.u) + ' ne veut plus le voir');
+    },
     tog: function (d) {
       var k = d.k, v = d.v;
       if (k === 'type') ui.type = v;
