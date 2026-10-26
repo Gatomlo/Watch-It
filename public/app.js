@@ -77,7 +77,7 @@
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
     tab: 'me', sug: {}, sugOff: {}, sugVer: 0, epOpen: false, epSeason: null, epData: {}, epExp: {}, epErr: {}, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
     impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false,
-    sset: 'menu', accMsg: '', keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
+    sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
   };
   var booted = false, isAuthenticated = false, currentUsername = '';
 
@@ -884,13 +884,16 @@
     var head = subHeader('Assistant d’envies') + '<p class="help" style="margin:0;line-height:1.5">Facultatif. Avec une clé API, « Ce soir » comprend vos envies écrites librement. Sans clé, la recherche reste possible par mots-clés.</p>';
     var foot = '<span class="help">La clé reste sur votre serveur, chiffrée : le navigateur ne la revoit jamais. Chaque recherche « Ce soir » envoie votre phrase et une courte liste de titres au fournisseur choisi.</span>';
     if (!editing) {
-      return head + '<div class="group"><div class="card"><span class="ct"><b>' + esc(PROVS[A.provider]) + '</b><span>Clé enregistrée (…' + esc(A.last4 || '') + ')</span></span>' + (A.tested ? '<span class="st ok">Testée</span>' : '<span class="st no">Non testée</span>') + '</div>' +
+      return head + '<div class="group"><div class="card"><span class="ct"><b>' + esc(PROVS[A.provider]) + '</b><span>Clé enregistrée (…' + esc(A.last4 || '') + ') · ' + esc(A.model || '') + '</span></span>' + (A.tested ? '<span class="st ok">Testée</span>' : '<span class="st no">Non testée</span>') + '</div>' +
         '<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn ghost" style="height:44px;flex:1 1 40%" data-act="keyedit" data-v="ai">Modifier</button><button class="btn ghost" style="height:44px;flex:1 1 40%" data-act="aitest"' + (ui.aiBusy ? ' disabled' : '') + '>' + (ui.aiBusy ? 'Test…' : 'Tester') + '</button><button class="btn ghost" style="height:44px;flex:1 1 40%" data-act="keyask" data-v="ai">Retirer</button></div>' +
         keyConfirmBox('ai', 'La recherche « Ce soir » reviendra aux mots-clés.', 'aiclear') +
         (ui.aiMsg ? '<div class="notice" role="status">' + esc(ui.aiMsg) + '</div>' : '') + foot + '</div>';
     }
     return head + '<div class="group"><h2>Fournisseur</h2><div class="seg">' + Object.keys(PROVS).map(function (p) { return '<button class="chip" style="' + (A.provider === p ? 'background:var(--surface2);border-color:var(--accent)' : '') + '" data-act="aiprov" data-v="' + p + '" aria-pressed="' + (A.provider === p) + '">' + PROVS[p] + '</button>'; }).join('') + '</div>' +
-      '<label for="key" style="position:absolute;left:-9999px">Clé API ' + esc(PROVS[A.provider]) + '</label><input id="key" class="kinput" type="password" autocomplete="off" placeholder="Collez votre clé API ' + esc(PROVS[A.provider]) + '">' +
+      '<label for="key" style="position:absolute;left:-9999px">Clé API ' + esc(PROVS[A.provider]) + '</label><input id="key" class="kinput" type="password" autocomplete="off" placeholder="' + (A.hasKey ? 'Nouvelle clé (laisser vide pour garder l’actuelle)' : 'Collez votre clé API ' + esc(PROVS[A.provider])) + '">' +
+      '<div class="group" style="gap:6px"><label for="aimodel" class="help">Modèle (à changer seulement si le fournisseur retire l’actuel)</label><input id="aimodel" class="fld" autocomplete="off" autocapitalize="off" spellcheck="false" value="' + esc(ui.aiDraftModel != null ? ui.aiDraftModel : ((A.models && A.models[A.provider] && A.models[A.provider].model) || '')) + '" placeholder="' + esc((A.models && A.models[A.provider] && A.models[A.provider].def) || '') + '">' +
+      (ui.aiModels ? '<div class="chips">' + (ui.aiModels.length ? ui.aiModels.slice(0, 14).map(function (m) { return '<button class="chip" style="height:36px;padding:0 12px;font-size:12px" data-act="aipick" data-v="' + esc(m) + '">' + esc(m) + '</button>'; }).join('') : '<span class="help">Aucun modèle trouvé.</span>') + '</div>' : '') +
+      (A.hasKey ? '<button class="link" style="align-self:flex-start" data-act="aimodels">Voir les modèles disponibles</button>' : '<span class="help">Après l’enregistrement de la clé, vous pourrez lister les modèles disponibles.</span>') + '</div>' +
       '<div style="display:flex;gap:10px"><button class="btn ghost" style="height:44px" data-act="aisave"' + (ui.aiBusy ? ' disabled' : '') + '>' + (ui.aiBusy ? 'Test en cours…' : 'Enregistrer et tester') + '</button>' + (A.hasKey ? '<button class="btn ghost" style="height:44px" data-act="keycancel">Annuler</button>' : '') + '</div>' +
       (ui.aiMsg ? '<div class="notice" role="status">' + esc(ui.aiMsg) + '</div>' : '') + foot + '</div>';
   }
@@ -1228,14 +1231,20 @@
         .finally(function () { ui.envBusy = false; if (ui.screen === 'envies') render(true); });
     },
     profile: function (d) { me = d.u; try { localStorage.setItem('maiwatch-me', me); } catch (e) {} ui.sugVer++; render(true); },
-    aiprov: function (d) { CFG.ai.provider = d.v; render(true); },
+    aiprov: function (d) { CFG.ai.provider = d.v; ui.aiDraftModel = null; ui.aiModels = null; render(true); },
+    aipick: function (d) { var i = document.getElementById('aimodel'); if (i) i.value = d.v; ui.aiDraftModel = d.v; },
+    aimodels: function () {
+      var i = document.getElementById('aimodel'); ui.aiDraftModel = i ? i.value : null;
+      api('/api/ai/models').then(function (l) { ui.aiModels = l; }).catch(function (e) { ui.aiModels = []; ui.aiMsg = e.message; }).finally(function () { render(true); });
+    },
     aisave: function () {
       var k = document.getElementById('key'), key = k ? k.value.trim() : '';
       if (!key && !CFG.ai.hasKey) { ui.aiMsg = 'Collez d’abord une clé API.'; render(true); return; }
+      var mi = document.getElementById('aimodel'), model = mi ? mi.value.trim() : undefined;
       ui.aiBusy = true; ui.aiMsg = ''; render(true);
-      api('/api/ai', { method: 'PUT', body: { provider: CFG.ai.provider, key: key } })
+      api('/api/ai', { method: 'PUT', body: { provider: CFG.ai.provider, key: key, model: model } })
         .then(function () { return api('/api/ai/test', { method: 'POST' }); })
-        .then(function (r) { CFG.ai = r.status; ui.keyEdit.ai = false; ui.aiMsg = r.ok ? 'Clé enregistrée et testée : ' + PROVS[CFG.ai.provider] + ' répond.' : 'Clé enregistrée, mais le test a échoué : ' + r.error; })
+        .then(function (r) { CFG.ai = r.status; ui.keyEdit.ai = false; ui.aiDraftModel = null; ui.aiModels = null; ui.aiMsg = r.ok ? 'Clé enregistrée et testée : ' + PROVS[CFG.ai.provider] + ' répond.' : 'Clé enregistrée, mais le test a échoué : ' + r.error; })
         .catch(function (e) { ui.aiMsg = e.message; })
         .finally(function () { ui.aiBusy = false; render(true); });
     },
@@ -1288,7 +1297,7 @@
     installhide: function () { try { localStorage.setItem('maiwatch-install-hidden', '1'); } catch (e) {} render(true); },
     keyedit: function (d) { ui.keyEdit[d.v] = true; ui.keyConfirm = null; ui.tmdbMsg = ''; ui.aiMsg = ''; render(true); },
     keyask: function (d) { ui.keyConfirm = d.v; render(true); },
-    keycancel: function () { ui.keyEdit = {}; ui.keyConfirm = null; ui.tmdbMsg = ''; ui.aiMsg = ''; render(true); },
+    keycancel: function () { ui.aiDraftModel = null; ui.aiModels = null; ui.keyEdit = {}; ui.keyConfirm = null; ui.tmdbMsg = ''; ui.aiMsg = ''; render(true); },
     aitest: function () {
       ui.aiBusy = true; ui.aiMsg = ''; render(true);
       api('/api/ai/test', { method: 'POST' }).then(function (r) { CFG.ai = r.status; ui.aiMsg = r.ok ? 'La clé fonctionne : ' + PROVS[CFG.ai.provider] + ' répond.' : 'Le test a échoué : ' + r.error; })

@@ -7,20 +7,27 @@
 const store = require("./db");
 const { encrypt, decrypt } = require("./cryptoBox");
 
+// Modèle utilisé : celui choisi dans l'appli (Réglages > Assistant d'envies), sinon la variable
+// AI_MODEL_<FOURNISSEUR>, sinon la valeur par défaut. Les fournisseurs retirent parfois d'anciens modèles.
+const DEFAULTS = { claude: "claude-haiku-5-5", gemini: "gemini-3.8-flash", mistral: "mistral-small-latest" };
+function modelOf(provider) {
+  return store.getSecret("ai_model_" + provider) || process.env["AI_MODEL_" + provider.toUpperCase()] || DEFAULTS[provider];
+}
+
 const PROVIDERS = {
   claude: {
     label: "Claude",
-    model: () => process.env.AI_MODEL_CLAUDE || "claude-haiku-5-5",
+    model: () => modelOf("claude"),
     url: () => process.env.AI_BASE_CLAUDE || "https://api.anthropic.com/v1/messages",
   },
   gemini: {
     label: "Gemini",
-    model: () => process.env.AI_MODEL_GEMINI || "gemini-2.5-flash",
+    model: () => modelOf("gemini"),
     url: (model) => (process.env.AI_BASE_GEMINI || "https://generativelanguage.googleapis.com/v1beta/models") + "/" + model + ":generateContent",
   },
   mistral: {
     label: "Mistral",
-    model: () => process.env.AI_MODEL_MISTRAL || "mistral-small-latest",
+    model: () => modelOf("mistral"),
     url: () => process.env.AI_BASE_MISTRAL || "https://api.mistral.ai/v1/chat/completions",
   },
 };
@@ -39,12 +46,20 @@ function status() {
     hasKey: !!c.key,
     last4: c.key ? c.key.slice(-4) : null,
     tested: store.getSecret("ai_tested") === "1",
+    model: modelOf(c.provider),
+    models: Object.fromEntries(Object.keys(PROVIDERS).map((p) => [p, { model: modelOf(p), def: DEFAULTS[p] }])),
   };
 }
 
-function save(provider, key) {
+function save(provider, key, model) {
   if (!PROVIDERS[provider]) { const e = new Error("Fournisseur inconnu."); e.status = 400; throw e; }
   store.setSecret("ai_provider", provider);
+  if (typeof model === "string") {
+    const m = model.trim();
+    if (!m || m === DEFAULTS[provider]) store.deleteSecret("ai_model_" + provider);
+    else if (/^[A-Za-z0-9._:\/-]{2,80}$/.test(m)) store.setSecret("ai_model_" + provider, m.replace(/^models\//, ""));
+    else { const e = new Error("Nom de modèle invalide."); e.status = 400; throw e; }
+  }
   if (typeof key === "string" && key.trim()) {
     store.setSecret("ai_key", encrypt(key.trim()));
   }
@@ -52,7 +67,7 @@ function save(provider, key) {
 }
 
 function clear() {
-  ["ai_provider", "ai_key", "ai_tested"].forEach((n) => store.deleteSecret(n));
+  ["ai_provider", "ai_key", "ai_tested"].concat(Object.keys(PROVIDERS).map((p) => "ai_model_" + p)).forEach((n) => store.deleteSecret(n));
 }
 
 async function post(url, headers, body) {
@@ -128,4 +143,29 @@ async function test() {
   }
 }
 
-module.exports = { PROVIDERS, status, save, clear, json, test, config };
+// Modèles proposés par le fournisseur pour la clé enregistrée (pour choisir si le modèle par défaut est retiré).
+async function listModels() {
+  const c = config();
+  if (!c.key) { const e = new Error("Enregistrez d'abord la clé."); e.status = 400; throw e; }
+  const get = async (url, headers) => {
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(20000) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) { const e = new Error((j.error && (j.error.message || j.error)) || "Liste des modèles indisponible."); e.status = 502; throw e; }
+    return j;
+  };
+  let ids = [];
+  if (c.provider === "gemini") {
+    const base = process.env.AI_BASE_GEMINI || "https://generativelanguage.googleapis.com/v1beta/models";
+    const j = await get(base + "?pageSize=200", { "x-goog-api-key": c.key });
+    ids = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).indexOf("generateContent") >= 0).map((m) => String(m.name).replace(/^models\//, "")).filter((n) => /^gemini-/.test(n));
+  } else if (c.provider === "claude") {
+    const j = await get(PROVIDERS.claude.url().replace(/\/messages$/, "/models") + "?limit=100", { "x-api-key": c.key, "anthropic-version": "2023-06-01" });
+    ids = (j.data || []).map((m) => m.id);
+  } else {
+    const j = await get(PROVIDERS.mistral.url().replace(/\/chat\/completions$/, "/models"), { Authorization: "Bearer " + c.key });
+    ids = (j.data || []).filter((m) => !m.capabilities || m.capabilities.completion_chat).map((m) => m.id);
+  }
+  return [...new Set(ids)].sort().reverse().slice(0, 40);
+}
+
+module.exports = { PROVIDERS, DEFAULTS, status, save, clear, json, test, config, listModels };

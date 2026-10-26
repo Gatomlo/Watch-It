@@ -313,10 +313,11 @@ app.post("/api/push/test", requireAuth, wrap(async (req, res) => {
 
 app.get("/api/ai", requireAuth, (req, res) => res.json(ai.status()));
 app.put("/api/ai", requireAuth, (req, res) => {
-  const { provider, key } = req.body || {};
-  ai.save(String(provider), typeof key === "string" ? key : "");
+  const { provider, key, model } = req.body || {};
+  ai.save(String(provider), typeof key === "string" ? key : "", typeof model === "string" ? model : undefined);
   res.json(ai.status());
 });
+app.get("/api/ai/models", requireAuth, wrap(async (req, res) => { res.json(await ai.listModels()); }));
 app.post("/api/ai/test", requireAuth, wrap(async (req, res) => {
   const r = await ai.test();
   res.json(Object.assign({}, r, { status: ai.status() }));
