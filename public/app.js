@@ -1244,7 +1244,7 @@
       ui.aiBusy = true; ui.aiMsg = ''; render(true);
       api('/api/ai', { method: 'PUT', body: { provider: CFG.ai.provider, key: key, model: model } })
         .then(function () { return api('/api/ai/test', { method: 'POST' }); })
-        .then(function (r) { CFG.ai = r.status; ui.keyEdit.ai = false; ui.aiDraftModel = null; ui.aiModels = null; ui.aiMsg = r.ok ? 'Clé enregistrée et testée : ' + PROVS[CFG.ai.provider] + ' répond.' : 'Clé enregistrée, mais le test a échoué : ' + r.error; })
+        .then(function (r) { CFG.ai = r.status; ui.keyEdit.ai = false; ui.aiDraftModel = null; ui.aiModels = null; ui.aiMsg = r.ok ? 'Clé enregistrée et testée : ' + PROVS[CFG.ai.provider] + ' répond.' : (r.transient ? 'Clé enregistrée. ' + r.error : 'Clé enregistrée, mais le test a échoué : ' + r.error); })
         .catch(function (e) { ui.aiMsg = e.message; })
         .finally(function () { ui.aiBusy = false; render(true); });
     },
@@ -1300,7 +1300,7 @@
     keycancel: function () { ui.aiDraftModel = null; ui.aiModels = null; ui.keyEdit = {}; ui.keyConfirm = null; ui.tmdbMsg = ''; ui.aiMsg = ''; render(true); },
     aitest: function () {
       ui.aiBusy = true; ui.aiMsg = ''; render(true);
-      api('/api/ai/test', { method: 'POST' }).then(function (r) { CFG.ai = r.status; ui.aiMsg = r.ok ? 'La clé fonctionne : ' + PROVS[CFG.ai.provider] + ' répond.' : 'Le test a échoué : ' + r.error; })
+      api('/api/ai/test', { method: 'POST' }).then(function (r) { CFG.ai = r.status; ui.aiMsg = r.ok ? 'La clé fonctionne : ' + PROVS[CFG.ai.provider] + ' répond.' : (r.transient ? r.error : 'Le test a échoué : ' + r.error); })
         .catch(function (e) { ui.aiMsg = e.message; }).finally(function () { ui.aiBusy = false; render(true); });
     },
     tmdbclear: function () {

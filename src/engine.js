@@ -245,7 +245,7 @@ async function envies(state, text, me, minutes) {
   let c = null, mode = "keywords", note = null;
   if (aiOn) {
     try { c = await aiConstraints(text, maps.names); if (c) mode = "ai"; }
-    catch (e) { note = e.authFailed ? "Clé IA refusée : recherche par mots-clés." : "IA indisponible : recherche par mots-clés."; }
+    catch (e) { note = e.authFailed ? "Clé IA refusée : recherche par mots-clés." : (e.transient || e.limited ? "Le fournisseur IA est surchargé ou limité en ce moment : recherche par mots-clés cette fois." : "IA indisponible : recherche par mots-clés."); }
   }
   if (!c) c = heuristicConstraints(text, maps.names);
   if (minutes) {

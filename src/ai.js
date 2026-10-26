@@ -85,13 +85,27 @@ async function post(url, headers, body) {
     const e = new Error(typeof msg === "string" ? msg : "Erreur du fournisseur IA.");
     e.status = res.status === 401 || res.status === 403 ? 401 : 502;
     e.authFailed = res.status === 401 || res.status === 403;
+    // Surcharge passagère du fournisseur (503, 529, « high demand »…) : la clé n'est pas en cause, on réessaie.
+    e.transient = [500, 502, 503, 504, 529].indexOf(res.status) >= 0 || /high demand|overloaded|try again later|temporarily/i.test(String(msg));
+    e.limited = res.status === 429;
     throw e;
   }
   return json;
 }
 
 // Renvoie le texte de la réponse du modèle.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Jusqu'à 3 essais (0,7 s puis 2 s d'attente) quand le fournisseur est momentanément surchargé.
 async function complete(provider, key, system, user, maxTokens) {
+  let last;
+  for (let i = 0; i < 3; i++) {
+    try { return await completeOnce(provider, key, system, user, maxTokens); }
+    catch (e) { last = e; if (!e.transient) throw e; if (i < 2) await sleep(i === 0 ? 700 : 2000); }
+  }
+  throw last;
+}
+
+async function completeOnce(provider, key, system, user, maxTokens) {
   const p = PROVIDERS[provider];
   const model = p.model();
   if (provider === "claude") {
@@ -138,8 +152,12 @@ async function test() {
     store.setSecret("ai_tested", ok ? "1" : "0");
     return ok ? { ok: true } : { ok: false, error: "Réponse inattendue du fournisseur." };
   } catch (e) {
+    const label = PROVIDERS[c.provider].label;
+    // Surcharge ou limite d'utilisation : la clé n'est pas en cause, on ne touche pas à l'état « testée ».
+    if (e.transient) return { ok: false, transient: true, error: label + " est surchargé en ce moment (« " + String(e.message).slice(0, 140) + " »). Votre clé n'est pas en cause : réessayez dans quelques minutes." };
+    if (e.limited) return { ok: false, transient: true, error: "Limite d'utilisation atteinte chez " + label + " (« " + String(e.message).slice(0, 140) + " »). Votre clé n'est pas en cause : attendez ou vérifiez votre quota." };
     store.setSecret("ai_tested", "0");
-    return { ok: false, error: e.authFailed ? "Clé refusée par " + PROVIDERS[c.provider].label + "." : (e.message || "Fournisseur injoignable.") };
+    return { ok: false, error: e.authFailed ? "Clé refusée par " + label + "." : (e.message || "Fournisseur injoignable.") };
   }
 }
 
