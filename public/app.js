@@ -107,6 +107,7 @@
   }
   function addEntry(it, status) {
     var e = Object.assign(lite(it), { by: me, at: todayISO(), status: status || 'todo', r: {}, note: '' });
+    if (e.status === 'todo' && S.settings.addFor !== 'me') e.w = { M: true, E: true }; // par défaut, voulu par les deux
     S.list.push(e);
     return e;
   }
@@ -964,9 +965,12 @@
   function setProfils() {
     var cnt = { M: 0, E: 0 };
     S.list.forEach(function (e) { if (e.status === 'seen') { if (e.r.M) cnt.M++; if (e.r.E) cnt.E++; } });
+    var af = S.settings.addFor === 'me' ? 'me' : 'both';
+    var addFor = '<div class="group"><h2>Quand j’ajoute un titre à voir</h2><div class="seg" role="group" aria-label="Qui veut le voir par défaut">' + [['both', 'Nous deux'], ['me', 'Moi seul']].map(function (x) { return '<button class="chip' + (af === x[0] ? ' on' : '') + '" data-act="addfor" data-v="' + x[0] + '" aria-pressed="' + (af === x[0]) + '">' + x[1] + '</button>'; }).join('') + '</div><span class="help">' + (af === 'both' ? 'Le titre est marqué comme voulu par vous deux ; l’autre n’est pas notifié. Chacun peut retirer son envie depuis la fiche.' : 'Seul celui qui l’ajoute le veut ; l’autre est notifié et peut répondre « Moi aussi ».') + '</span></div>';
     return subHeader('Profils') +
       '<p class="help" style="margin:0;line-height:1.5">Le foyer partage un seul compte, avec deux profils : chacun a ses propres notes et ses suggestions.</p>' +
       '<div class="group"><div class="pwd"><label class="help" for="pn-M">Premier profil</label><input id="pn-M" class="fld" data-prof="M" value="' + esc(pname('M')) + '" maxlength="20"><label class="help" for="pn-E">Second profil</label><input id="pn-E" class="fld" data-prof="E" value="' + esc(pname('E')) + '" maxlength="20"></div></div>' +
+      addFor +
       '<span class="help">' + esc(pname('M')) + ' : ' + cnt.M + ' titre' + (cnt.M > 1 ? 's' : '') + ' noté' + (cnt.M > 1 ? 's' : '') + ' · ' + esc(pname('E')) + ' : ' + cnt.E + ' titre' + (cnt.E > 1 ? 's' : '') + ' noté' + (cnt.E > 1 ? 's' : '') + '</span>';
   }
 
@@ -1301,6 +1305,7 @@
       var all = head + '\n' + body;
       if (navigator.clipboard) navigator.clipboard.writeText(all).then(function () { toast('Lien copié'); }, function () { toast(all); }); else toast(all);
     },
+    addfor: function (d) { S.settings.addFor = d.v; save(); render(true); },
     nope: function (d) {
       var e = entry(d.id); if (!e) return;
       e.no = e.no || {}; e.no[me] = true; save(); render(true);
