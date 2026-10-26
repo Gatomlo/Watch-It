@@ -21,7 +21,7 @@ npm start          # http://localhost:3100
 
 **Aucun fichier `.env` à écrire.** Tout se règle dans l'appli :
 
-1. **Compte** : au premier démarrage, le serveur affiche un *code d'installation* dans sa console (en production : `pm2 logs mAIwatch`). À la première visite du site, l'appli propose de créer le compte du foyer (identifiant + mot de passe) et demande ce code, pour que personne d'autre ne puisse le créer avant vous. Le code n'existe que tant qu'aucun compte n'est créé.
+1. **Compte** : au premier démarrage, le serveur affiche un *code d'installation* dans sa console (en production : `pm2 logs maiwatch`). À la première visite du site, l'appli propose de créer le compte du foyer (identifiant + mot de passe) et demande ce code, pour que personne d'autre ne puisse le créer avant vous. Le code n'existe que tant qu'aucun compte n'est créé. Code introuvable (journal vidé ou défilé) : `pm2 restart maiwatch` puis `pm2 logs maiwatch --lines 20` ; un nouveau code est généré à chaque démarrage tant qu'il n'y a pas de compte.
 2. **Clé TMDB** (obligatoire pour les films et séries) : juste après, l'appli vous guide. Compte gratuit sur [themoviedb.org](https://www.themoviedb.org), Réglages > API, puis collez la « Clé d'API » (ou le jeton de lecture) dans l'appli : elle est vérifiée auprès de TMDB, puis chiffrée en base. Usage non commercial uniquement ; les mentions TMDB et JustWatch affichées dans Réglages sont à conserver.
 3. **Plateformes** du foyer et **assistant d'envies** (facultatif) : Réglages.
 

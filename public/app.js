@@ -612,7 +612,7 @@
       '<label>Identifiant<input type="text" name="username" required maxlength="40" autocomplete="username"></label>' +
       '<label>Mot de passe (8 caractères minimum)<input type="password" name="password" required minlength="8" autocomplete="new-password"></label>' +
       '<label>Confirmer le mot de passe<input type="password" name="password2" required minlength="8" autocomplete="new-password"></label>' +
-      '<label>Code d’installation<input type="text" name="code" required autocomplete="off" autocapitalize="characters" placeholder="XXXX-XXXX-XXXX"><span class="help" style="font-weight:500">Affiché dans la console du serveur au démarrage (<code>pm2 logs</code>). Il garantit que vous seul créez le compte.</span></label>' +
+      '<label>Code d’installation<input type="text" name="code" required autocomplete="off" autocapitalize="characters" placeholder="XXXX-XXXX-XXXX"><span class="help" style="font-weight:500">Affiché dans la console du serveur : <code>pm2 logs maiwatch</code> sur un serveur, ou le terminal où tourne <code>npm start</code>. Il garantit que vous seul créez le compte.</span></label>' +
       '<button type="submit" class="btn">Créer le compte</button></form></div>';
   }
   function loginView() {

@@ -115,7 +115,7 @@ app.post("/api/setup", setupLimiter, (req, res) => {
   const given = Buffer.from(String(code || "").trim().toUpperCase());
   const want = Buffer.from(setupCode || "");
   if (!setupCode || given.length !== want.length || !crypto.timingSafeEqual(given, want)) {
-    return res.status(403).json({ error: "Code d'installation incorrect. Il est affiché dans la console du serveur (pm2 logs mAIwatch)." });
+    return res.status(403).json({ error: "Code d'installation incorrect. Il est affiché dans la console du serveur (pm2 logs maiwatch)." });
   }
   const id = db.createFirstUser(username.trim(), bcrypt.hashSync(password, 12));
   if (id == null) return res.status(409).json({ error: "Un compte existe déjà. Connectez-vous." });
