@@ -467,6 +467,11 @@
   function ava(u) { return '<span class="ava ' + u + '" aria-label="Ajouté par ' + esc(pname(u)) + '">' + esc(initial(u)) + '</span>'; }
   // Qui veut le voir : e.w = { M:true, E:true } ; sans e.w, seul celui qui l'a ajouté.
   function wants(e, u) { return e.w ? !!e.w[u] : e.by === u; }
+  // Titres ajoutés par l'autre profil, pas encore voulus ni refusés par moi.
+  function pending() {
+    var o = me === 'M' ? 'E' : 'M';
+    return S.list.filter(function (e) { return e.status === 'todo' && e.by === o && !wants(e, me) && !(e.no && e.no[me]); }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
+  }
   function avas(e) { return '<span class="avs">' + ['M', 'E'].filter(function (u) { return wants(e, u); }).map(function (u) { return '<span class="ava ' + u + '" aria-label="' + esc(pname(u)) + ' veut le voir">' + esc(initial(u)) + '</span>'; }).join('') + '</span>'; }
   function rowHtml(it, e) {
     var b = '<button class="row" data-act="open" data-id="' + esc(it.id) + '">' + poster(it) + '<span class="rb"><span class="rt"><span class="title">' + esc(it.t) + '</span>' + (e ? avas(e) : '') + '</span><span class="meta">' + meta(it) + '</span>' + badges(it) + '</span></button>';
@@ -581,11 +586,24 @@
     var nAv = todo.filter(function (e) { return avail(e).length; }).length;
     var shown = todo.filter(function (e) { return passes(e); });
     var sub = todo.length + ' titre' + (todo.length > 1 ? 's' : '') + (platsOn().length ? ' · ' + nAv + ' dispo sur vos plateformes' : '');
-    return header('À voir', sub) + installBanner() + (!CFG.tmdb ? noTmdb() : '') +
+    var pend = pending(), o = me === 'M' ? 'E' : 'M';
+    var newsBanner = pend.length ? '<button class="notice newsb" data-act="push" data-to="news"><span><b>' + esc(pname(o)) + ' a ajouté ' + pend.length + ' titre' + (pend.length > 1 ? 's' : '') + '</b><br><span class="help">Dites si vous voulez les voir aussi</span></span>' + I('chev') + '</button>' : '';
+    return header('À voir', sub) + installBanner() + newsBanner + (!CFG.tmdb ? noTmdb() : '') +
       (!platsOn().length && todo.length ? '<div class="notice"><b>Choisissez vos plateformes</b> dans les <button class="link" style="padding:0;min-height:0;color:var(--fg)" data-act="push" data-to="settings">réglages</button> pour voir ce qui est disponible chez vous.</div>' : '') +
       filterBar('<button class="fbtn rand" data-act="draw">' + I('dice') + 'Au hasard</button>') +
       (shown.length ? '<div class="list">' + shown.map(function (e) { return rowHtml(e, e); }).join('') + '</div>' :
         '<div class="empty">' + (todo.length ? 'Aucun titre ne correspond à ces filtres.<br><button class="link" data-act="resetf">Effacer les filtres</button>' : 'Rien dans la liste pour l’instant.<br>Touchez + ou partagez un lien depuis Signal.') + '</div>');
+  };
+
+  V.news = function () {
+    var o = me === 'M' ? 'E' : 'M', pend = pending();
+    var rows = pend.map(function (e) {
+      return '<div class="rowx">' + '<button class="row" data-act="open" data-id="' + esc(e.id) + '">' + poster(e) + '<span class="rb"><span class="rt"><span class="title">' + esc(e.t) + '</span></span><span class="meta">' + meta(e) + ' · ajouté le ' + esc(fmtDate(e.at)) + '</span>' + badges(e) + '</span></button>' +
+        '<div class="decide"><button class="chip on" data-act="want" data-id="' + esc(e.id) + '" data-u="' + me + '">Moi aussi</button><button class="chip" data-act="nope" data-id="' + esc(e.id) + '">Pas pour moi</button></div></div>';
+    }).join('');
+    return '<header class="top tight">' + back() + '<h1 class="s">Ajoutés par ' + esc(pname(o)) + '</h1></header>' +
+      '<p class="help" style="margin:0;line-height:1.5">Les titres que ' + esc(pname(o)) + ' a ajoutés et que vous n’avez pas encore choisis, du plus récent au plus ancien.</p>' +
+      (rows ? '<div class="list">' + rows + '</div>' : '<div class="empty">Rien de nouveau : vous avez tout passé en revue.</div>');
   };
 
   V.seen = function () {
@@ -884,9 +902,17 @@
     var P = ui.push, lbl, btns = '', help;
     if (P.st === 'unsupported') { lbl = '<span class="st no">Indisponible</span>'; help = 'Ce navigateur ne gère pas les notifications. Sur iPhone, ajoutez d’abord l’appli à l’écran d’accueil.'; }
     else if (P.st === 'denied') { lbl = '<span class="st bad">Bloquées</span>'; help = 'Les notifications sont bloquées pour ce site : autorisez-les dans les réglages du navigateur.'; }
-    else if (P.st === 'on') { lbl = '<span class="st ok">Activées</span>'; help = 'Vous serez prévenu quand un titre de votre liste quitte l’une de vos plateformes (vérification toutes les 6 h).'; btns = '<button class="btn ghost" style="height:44px" data-act="pushtest">Envoyer un test</button><button class="btn ghost" style="height:44px" data-act="pushoff">Désactiver</button>'; }
+    else if (P.st === 'on') { lbl = '<span class="st ok">Activées</span>'; help = 'Choisissez ci-dessous ce qui vous est notifié sur cet appareil.'; btns = '<button class="btn ghost" style="height:44px" data-act="pushtest">Envoyer un test</button><button class="btn ghost" style="height:44px" data-act="pushoff">Désactiver</button>'; }
     else { lbl = '<span class="st no">Désactivées</span>'; help = 'Recevez une notification quand un titre de votre liste quitte l’une de vos plateformes. À activer sur chaque appareil.'; btns = '<button class="btn ghost" style="height:44px" data-act="pushon">Activer sur cet appareil</button>'; }
-    return '<div class="group"><div class="sec"><h2>État</h2>' + lbl + '</div>' + (btns ? '<div style="display:flex;gap:10px">' + btns + '</div>' : '') + (P.msg ? '<div class="notice" role="status">' + esc(P.msg) + '</div>' : '') + '<span class="help">' + help + '</span></div>';
+    var kinds = '';
+    if (P.st === 'on' && P.prefs) {
+      var o = me === 'M' ? 'E' : 'M';
+      kinds = '<div class="group"><h2>Me prévenir quand</h2>' + [['added', pname(o) + ' ajoute un titre', 'Regroupé si elle en ajoute plusieurs d’un coup.'], ['release', 'Un titre de ma liste sort', 'Pour les titres ajoutés avant leur sortie, à 8 h le jour J.'], ['gone', 'Un titre quitte mes plateformes', 'Vérifié toutes les 6 h.']].map(function (k) {
+        var on = P.prefs[k[0]] !== false;
+        return '<button class="card" style="text-align:left;width:100%" data-act="pushpref" data-k="' + k[0] + '" aria-pressed="' + on + '"><span class="ct"><b>' + esc(k[1]) + '</b><span>' + esc(k[2]) + '</span></span><span class="st ' + (on ? 'ok' : 'no') + '">' + (on ? 'Oui' : 'Non') + '</span></button>';
+      }).join('') + '<span class="help">Cet appareil est réglé sur le profil « ' + esc(pname(me)) + ' ». Pour changer, réactivez les notifications après avoir choisi le profil.</span></div>';
+    }
+    return '<div class="group"><div class="sec"><h2>État</h2>' + lbl + '</div>' + (btns ? '<div style="display:flex;gap:10px">' + btns + '</div>' : '') + (P.msg ? '<div class="notice" role="status">' + esc(P.msg) + '</div>' : '') + '<span class="help">' + help + '</span></div>' + kinds;
   }
   // Réglages : un menu de rubriques, chacune dans sa page (ui.sset).
   function platRows() {
@@ -1246,8 +1272,9 @@
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) { ui.push = { st: 'unsupported', endpoint: null, msg: '' }; return; }
     if (Notification.permission === 'denied') { ui.push = { st: 'denied', endpoint: null, msg: '' }; return; }
     navigator.serviceWorker.getRegistration().then(function (reg) { return reg ? reg.pushManager.getSubscription() : null; }).then(function (sub) {
-      ui.push = { st: sub ? 'on' : 'off', endpoint: sub ? sub.endpoint : null, msg: ui.push.msg || '' };
+      ui.push = { st: sub ? 'on' : 'off', endpoint: sub ? sub.endpoint : null, msg: ui.push.msg || '', prefs: ui.push.prefs };
       if (ui.screen === 'settings') render(true);
+      if (sub) api('/api/push/status', { method: 'POST', body: { endpoint: sub.endpoint } }).then(function (r) { ui.push.prefs = r.prefs; if (ui.screen === 'settings') render(true); }).catch(function () {});
     }).catch(function () { ui.push = { st: 'off', endpoint: null, msg: '' }; });
   }
   function loadTrakt() { api('/api/trakt-key').then(function (st) { ui.trakt = st; if (ui.screen === 'import') render(true); }).catch(function () {}); }
@@ -1274,11 +1301,17 @@
       var all = head + '\n' + body;
       if (navigator.clipboard) navigator.clipboard.writeText(all).then(function () { toast('Lien copié'); }, function () { toast(all); }); else toast(all);
     },
+    nope: function (d) {
+      var e = entry(d.id); if (!e) return;
+      e.no = e.no || {}; e.no[me] = true; save(); render(true);
+      toast('« ' + e.t + ' » écarté pour vous', 'Annuler', function () { delete e.no[me]; save(); render(true); });
+    },
     want: function (d) {
       var e = entry(d.id); if (!e) return;
       var w = e.w || (function () { var o = {}; o[e.by] = true; return o; })();
       if (w[d.u]) { if (Object.keys(w).filter(function (k) { return w[k]; }).length < 2) { toast('Au moins une personne doit vouloir le voir.'); return; } delete w[d.u]; }
       else w[d.u] = true;
+      if (w[d.u] && e.no) delete e.no[d.u];
       e.w = w; save(); render(true);
       toast(w[d.u] ? pname(d.u) + ' veut aussi le voir' : pname(d.u) + ' ne veut plus le voir');
     },
@@ -1492,7 +1525,7 @@
         return Promise.all([navigator.serviceWorker.ready, api('/api/push/key')]).then(function (r) {
           return r[0].pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(r[1].publicKey) });
         }).then(function (sub) {
-          return api('/api/push/subscribe', { method: 'POST', body: { sub: sub.toJSON(), profile: me } }).then(function () { ui.push = { st: 'on', endpoint: sub.endpoint, msg: 'Notifications activées sur cet appareil.' }; });
+          return api('/api/push/subscribe', { method: 'POST', body: { sub: sub.toJSON(), profile: me } }).then(function () { ui.push = { st: 'on', endpoint: sub.endpoint, msg: 'Notifications activées sur cet appareil.', prefs: { added: true, release: true, gone: true } }; });
         });
       }).catch(function (e) { ui.push.msg = 'Impossible d’activer : ' + e.message; }).finally(function () { render(true); });
     },
@@ -1500,6 +1533,11 @@
       navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) {
         if (!sub) return; var ep = sub.endpoint; return sub.unsubscribe().then(function () { return api('/api/push/unsubscribe', { method: 'POST', body: { endpoint: ep } }); });
       }).then(function () { ui.push = { st: 'off', endpoint: null, msg: 'Notifications désactivées.' }; }).catch(function (e) { ui.push.msg = e.message; }).finally(function () { render(true); });
+    },
+    pushpref: function (d) {
+      var P = ui.push; if (!P.endpoint || !P.prefs) return;
+      var upd = {}; upd[d.k] = P.prefs[d.k] === false;
+      api('/api/push/prefs', { method: 'POST', body: { endpoint: P.endpoint, prefs: upd } }).then(function (r) { P.prefs = r.prefs; }).catch(function (e) { toast(e.message); }).finally(function () { render(true); });
     },
     pushtest: function () {
       api('/api/push/test', { method: 'POST', body: { endpoint: ui.push.endpoint } }).then(function (r) { ui.push.msg = r.sent ? 'Notification envoyée.' : 'Aucune notification envoyée : réactivez-les.'; }).catch(function (e) { ui.push.msg = e.message; }).finally(function () { render(true); });
@@ -1696,9 +1734,10 @@
   // Partage depuis une autre appli (share_target) : ?title=…&text=…&url=… → recherche pré-remplie.
   function handleLaunch() {
     var p = new URLSearchParams(location.search);
-    var action = p.get('action'), title = p.get('title'), text = p.get('text'), url = p.get('url');
-    if (!S || !isAuthenticated || !(action || title || text || url)) return;
+    var action = p.get('action'), title = p.get('title'), text = p.get('text'), url = p.get('url'), view = p.get('view');
+    if (!S || !isAuthenticated || !(action || title || text || url || view)) return;
     history.replaceState(null, '', location.pathname + location.hash);
+    if (view === 'news') { ui.hist = []; ui.screen = 'news'; render(); return; }
     if (action === 'ce-soir') { ui.hist = []; ui.screen = 'envies'; render(); return; }
     var q = '';
     if (action !== 'ajouter') {

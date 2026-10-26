@@ -264,3 +264,8 @@ button.play{border:0;padding:0;cursor:pointer}
 /* --- Carte plateforme cliquable (lien direct) --- */
 a.card{text-decoration:none;color:inherit}
 a.card .ico{flex:none;opacity:.6}
+
+/* --- Nouveautés de l'autre profil --- */
+.newsb{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:left;cursor:pointer;color:inherit;font:inherit}
+.decide{display:flex;gap:8px;margin-left:82px}
+.decide .chip{height:36px;padding:0 14px;font-size:13px}

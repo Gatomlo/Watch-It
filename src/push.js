@@ -11,6 +11,9 @@ const tmdb = require("./tmdb");
 
 store.db.exec("CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, data TEXT NOT NULL, profile TEXT NOT NULL DEFAULT 'M', created_at TEXT NOT NULL DEFAULT (datetime('now')))");
 
+try { store.db.exec("ALTER TABLE push_subs ADD COLUMN prefs TEXT NOT NULL DEFAULT '{}'"); } catch (e) { /* colonne déjà présente */ }
+const KINDS = ["added", "release", "gone"]; // préférences par appareil, toutes actives par défaut
+
 function vapid() {
   let pub = store.getSecret("vapid_pub"), priv = (store.getSecret("vapid_priv") && decrypt(store.getSecret("vapid_priv"))) || null;
   if (!pub || !priv) {
@@ -27,6 +30,17 @@ function subscribe(sub, profile) {
   store.db.prepare("INSERT INTO push_subs (endpoint, data, profile) VALUES (?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET data = excluded.data, profile = excluded.profile")
     .run(sub.endpoint, JSON.stringify(sub), profile === "E" ? "E" : "M");
 }
+function prefsOf(endpoint) {
+  const row = store.db.prepare("SELECT prefs FROM push_subs WHERE endpoint = ?").get(String(endpoint || ""));
+  let p = {}; try { p = JSON.parse(row && row.prefs) || {}; } catch (e) {}
+  return Object.fromEntries(KINDS.map((k) => [k, p[k] !== false]));
+}
+function setPrefs(endpoint, prefs) {
+  const cur = prefsOf(endpoint), next = {};
+  KINDS.forEach((k) => { next[k] = prefs && typeof prefs[k] === "boolean" ? prefs[k] : cur[k]; });
+  store.db.prepare("UPDATE push_subs SET prefs = ? WHERE endpoint = ?").run(JSON.stringify(next), String(endpoint || ""));
+  return next;
+}
 const unsubscribe = (endpoint) => store.db.prepare("DELETE FROM push_subs WHERE endpoint = ?").run(String(endpoint || ""));
 const count = () => store.db.prepare("SELECT COUNT(*) AS n FROM push_subs").get().n;
 const isSubscribed = (endpoint) => !!store.db.prepare("SELECT 1 FROM push_subs WHERE endpoint = ?").get(String(endpoint || ""));
@@ -40,10 +54,13 @@ let sender = async (sub, payload) => {
 };
 function setSender(fn) { sender = fn; }
 
-async function send(payload, onlyEndpoint) {
-  const rows = onlyEndpoint
-    ? store.db.prepare("SELECT endpoint, data FROM push_subs WHERE endpoint = ?").all(onlyEndpoint)
-    : store.db.prepare("SELECT endpoint, data FROM push_subs").all();
+// kind : type de notification (préférence de l'appareil) ; profile : « M » ou « E » pour ne viser que lui.
+async function send(payload, onlyEndpoint, kind, profile) {
+  let rows = onlyEndpoint
+    ? store.db.prepare("SELECT endpoint, data, prefs FROM push_subs WHERE endpoint = ?").all(onlyEndpoint)
+    : store.db.prepare("SELECT endpoint, data, prefs, profile FROM push_subs").all();
+  if (profile) rows = rows.filter((r) => r.profile === profile);
+  if (kind) rows = rows.filter((r) => { try { return JSON.parse(r.prefs || "{}")[kind] !== false; } catch (e) { return true; } });
   let sent = 0;
   for (const r of rows) {
     try { await sender(JSON.parse(r.data), payload); sent++; }
@@ -67,6 +84,7 @@ async function watch() {
   for (const e of todo) {
     let d;
     try { d = await tmdb.details(e.id, region, { bust: true }); } catch (err) { continue; }
+    if (d.date && d.date > today && e.d !== d.date) { e.d = d.date; delete e.rn; changed = true; } // date de sortie à venir (ou décalée)
     const now = d.av.f, prev = e.av && e.av.f;
     if (!prev) { e.av = { f: now.slice(), at: today }; changed = true; continue; }
     if (JSON.stringify(prev.slice().sort()) === JSON.stringify(now.slice().sort())) continue;
@@ -87,17 +105,70 @@ async function watch() {
     } catch (err) {}
     const nm = (id) => names[id] || "une de vos plateformes";
     const body = gone.length === 1 ? "« " + gone[0].e.t + " » n'est plus sur " + nm(gone[0].p) + "." : gone.length + " titres de votre liste quittent vos plateformes : " + gone.slice(0, 3).map((g) => "« " + g.e.t + " »").join(", ") + ".";
-    await send({ title: "mAIwatch", body, tag: "maiwatch-gone", url: "./" });
+    await send({ title: "mAIwatch", body, tag: "maiwatch-gone", url: "./" }, null, "gone");
   }
   return { checked: todo.length, gone: gone.length };
 }
 
+// --- Nouveaux ajouts de l'autre profil : regroupés 45 s pour ne pas notifier titre par titre ---
+const other = (u) => (u === "M" ? "E" : "M");
+const wantsIt = (e, u) => (e.w ? !!e.w[u] : e.by === u);
+const queue = { M: [], E: [] };
+let flushTimer = null;
+function notifyAdded(before, after) {
+  const known = new Set(((before && before.list) || []).map((e) => e.id));
+  const fresh = (after.list || []).filter((e) => e && e.status === "todo" && !known.has(e.id) && (e.by === "M" || e.by === "E"));
+  if (!fresh.length) return;
+  fresh.forEach((e) => { const t = other(e.by); if (!wantsIt(e, t)) queue[t].push({ by: e.by, t: e.t, id: e.id }); });
+  if (!flushTimer && (queue.M.length || queue.E.length)) { flushTimer = setTimeout(flushAdded, 45 * 1000); flushTimer.unref(); }
+}
+async function flushAdded() {
+  flushTimer = null;
+  const names = (store.getState().settings || {}).profiles || {};
+  for (const target of ["M", "E"]) {
+    const items = queue[target].splice(0);
+    if (!items.length) continue;
+    const who = names[items[0].by] || (items[0].by === "M" ? "Moi" : "Elle");
+    const body = items.length === 1 ? who + " a ajouté « " + items[0].t + " »." : who + " a ajouté " + items.length + " titres : " + items.slice(0, 3).map((i) => "« " + i.t + " »").join(", ") + (items.length > 3 ? "…" : "") + ".";
+    await send({ title: "mAIwatch", body, tag: "maiwatch-added", url: "./?view=news" }, null, "added", target).catch(() => {});
+  }
+}
+
+// --- Date de sortie atteinte (titres ajoutés avant leur sortie : e.d) ---
+const TZ = process.env.NOTIF_TZ || "Europe/Brussels";
+function localNow() {
+  const f = new Intl.DateTimeFormat("sv-SE", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
+  const g = (t) => f.find((p) => p.type === t).value;
+  return { date: g("year") + "-" + g("month") + "-" + g("day"), hour: Number(g("hour")) };
+}
+async function releaseCheck(now) {
+  now = now || localNow();
+  if (now.hour < 8) return { sent: 0 }; // pas de notification en pleine nuit
+  const state = store.getState(), version = store.getStateVersion();
+  const due = state.list.filter((e) => e.status === "todo" && e.d && e.d <= now.date && !e.rn);
+  if (!due.length) return { sent: 0 };
+  due.forEach((e) => { e.rn = true; });
+  if (store.saveState(state, version) == null) return { sent: 0, skipped: true };
+  let sent = 0;
+  for (const u of ["M", "E"]) {
+    const mine = due.filter((e) => wantsIt(e, u));
+    if (!mine.length) continue;
+    const body = mine.length === 1 ? "« " + mine[0].t + " » sort aujourd'hui." : mine.length + " titres de votre liste sortent : " + mine.slice(0, 3).map((e) => "« " + e.t + " »").join(", ") + (mine.length > 3 ? "…" : "") + ".";
+    sent += await send({ title: "mAIwatch · Sortie", body, tag: "maiwatch-release", url: "./" }, null, "release", u).catch(() => 0);
+  }
+  return { sent, due: due.length };
+}
+
 let timer = null;
+let relTimer = null;
 function start() {
   if (timer) return;
+  setTimeout(() => releaseCheck().catch(() => {}), 2 * 60 * 1000).unref();
+  relTimer = setInterval(() => releaseCheck().catch(() => {}), 3600 * 1000);
+  relTimer.unref();
   setTimeout(() => watch().catch(() => {}), 60 * 1000).unref();
   timer = setInterval(() => watch().catch(() => {}), 6 * 3600 * 1000);
   timer.unref();
 }
 
-module.exports = { publicKey, subscribe, unsubscribe, count, isSubscribed, send, setSender, watch, start };
+module.exports = { publicKey, subscribe, unsubscribe, count, isSubscribed, prefsOf, setPrefs, send, setSender, watch, start, notifyAdded, flushAdded, releaseCheck };

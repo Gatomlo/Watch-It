@@ -182,12 +182,14 @@ app.put("/api/state", requireAuth, (req, res) => {
   }
   const baseHeader = req.get("X-Base-Version");
   const base = baseHeader != null && /^\d+$/.test(baseHeader) ? Number(baseHeader) : null;
+  const before = db.getState();
   const version = db.saveState(state, base);
   if (version == null) {
     res.set("X-State-Version", String(db.getStateVersion()));
     return res.status(409).json({ error: "conflict", state: db.getState() });
   }
   res.set("X-State-Version", String(version));
+  try { push.notifyAdded(before, state); } catch (e) { /* une notification ne doit jamais faire échouer la synchro */ }
   res.json({ ok: true, version });
 });
 
@@ -320,7 +322,15 @@ app.post("/api/push/subscribe", requireAuth, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 app.post("/api/push/unsubscribe", requireAuth, (req, res) => { push.unsubscribe(req.body && req.body.endpoint); res.json({ ok: true }); });
-app.post("/api/push/status", requireAuth, (req, res) => res.json({ subscribed: push.isSubscribed(req.body && req.body.endpoint) }));
+app.post("/api/push/status", requireAuth, (req, res) => {
+  const ep = req.body && req.body.endpoint, on = push.isSubscribed(ep);
+  res.json({ subscribed: on, prefs: on ? push.prefsOf(ep) : null });
+});
+app.post("/api/push/prefs", requireAuth, (req, res) => {
+  const ep = req.body && req.body.endpoint;
+  if (!push.isSubscribed(ep)) return res.status(404).json({ error: "Appareil non abonné." });
+  res.json({ prefs: push.setPrefs(ep, req.body.prefs) });
+});
 app.post("/api/push/test", requireAuth, wrap(async (req, res) => {
   const n = await push.send({ title: "mAIwatch", body: "Les notifications fonctionnent sur cet appareil.", tag: "maiwatch-test", url: "./" }, req.body && req.body.endpoint);
   res.json({ sent: n });
