@@ -596,7 +596,8 @@
     if (!ui.sr) return '';
     if (ui.sr.error) return errBox(ui.sr.error);
     var list = ui.sr.items;
-    return '<h2>' + list.length + ' résultat' + (list.length > 1 ? 's' : '') + '</h2>' + (list.length ? list.map(function (it) {
+    var note = ui.srq ? '<span class="help">Titre repéré dans votre texte : « ' + esc(ui.srq) + ' »</span>' : '';
+    return '<h2>' + list.length + ' résultat' + (list.length > 1 ? 's' : '') + '</h2>' + note + (list.length ? list.map(function (it) {
       var e = entry(it.id), a = AV[it.id] || (ui.sr.av && ui.sr.av[it.id]);
       var mine = a ? a.f.filter(function (p) { return platsOn().indexOf(p) >= 0; }) : [];
       var line = a ? (mine.length ? mine.map(pnameOf).join(', ') : (a.f.length ? 'Sur d’autres plateformes' : 'Pas en streaming')) : '';
@@ -1055,10 +1056,10 @@
   }
 
   function runSearch() {
-    var q = ui.q.trim();
+    var mine = ui.q.trim(), q = titleFromShare(mine) || mine;
     if (norm(q).length < 2) { ui.sr = null; ui.srBusy = false; return; }
     ui.srBusy = true;
-    var mine = q;
+    ui.srq = q !== mine ? q : '';
     var m = /^(.*?)[\s(]+((?:19|20)\d{2})\)?$/.exec(q);
     api('/api/search?q=' + encodeURIComponent(m ? m[1] : q) + (m ? '&year=' + m[2] : '')).then(function (items) {
       if (ui.q.trim() !== mine) return;
@@ -1460,6 +1461,20 @@
   });
 
   // ===================== Démarrage =====================
+  // Extrait le titre d'un texte de partage : retire les liens, « Regardez … sur Prime Video ! », « … - Netflix ».
+  var PLAT_RE = '(?:Amazon Prime Video|Prime Video|Amazon|Netflix|Disney\\+|Disney Plus|Disney|Apple TV\\+?|Apple TV Plus|HBO Max|Max|Canal\\+?|Paramount\\+?|Paramount Plus|Streamz|Auvio|RTBF|YouTube|Rakuten TV|Pathé Home|MUBI|Arte|OCS|Crunchyroll|JustWatch|TMDB|IMDb|AlloCiné|Letterboxd|Trakt)';
+  function titleFromShare(t) {
+    var x = String(t || '').replace(/https?:\/\/\S+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!x) return '';
+    var m = new RegExp('^(?:regardez|regarde|regardons|voir|découvrez|découvre|retrouvez|watch|check out|checkout|stream|streaming)\\s+(.+)\\s+(?:sur|on|via|chez|dans|with)\\s+' + PLAT_RE + '\\b.*$', 'i').exec(x);
+    if (m) x = m[1];
+    else {
+      x = x.replace(new RegExp('\\s*[|–—-]\\s*' + PLAT_RE + '\\b.*$', 'i'), '');
+      x = x.replace(new RegExp('\\s+(?:sur|on)\\s+' + PLAT_RE + '\\b[\\s!?.]*$', 'i'), '');
+    }
+    return x.replace(/[!?«»"“”]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
   // Partage depuis une autre appli (share_target) : ?title=…&text=…&url=… → recherche pré-remplie.
   function handleLaunch() {
     var p = new URLSearchParams(location.search);
@@ -1469,9 +1484,8 @@
     if (action === 'ce-soir') { ui.hist = []; ui.screen = 'envies'; render(); return; }
     var q = '';
     if (action !== 'ajouter') {
-      // Le titre partagé prime ; sinon le texte. On retire les liens et les suffixes « - Netflix », « | JustWatch »…
-      var clean = function (x) { return String(x || '').replace(/https?:\/\/\S+/g, ' ').replace(/\s*[|–—-]\s*(Netflix|Disney\+?|Prime Video|Apple TV\+?|JustWatch|IMDb|TMDB|AlloCiné|Wikipédia|YouTube)\b.*$/i, ' ').replace(/\s+/g, ' ').trim(); };
-      var raw = clean(title) || clean(text);
+      // Le titre partagé prime ; sinon le texte (« Regardez Masterplan sur Prime Video ! » → « Masterplan »).
+      var raw = titleFromShare(title) || titleFromShare(text);
       if (!raw && url) { try { var seg = new URL(url).pathname.split('/').filter(Boolean).pop() || ''; raw = seg.replace(/[-_]+/g, ' ').replace(/\.\w+$/, '').replace(/^\d+\s*/, '').trim(); } catch (e) {} }
       q = raw.replace(/[«»"“”]/g, '').slice(0, 80);
     }
