@@ -908,10 +908,10 @@
     var kinds = '';
     if (P.st === 'on' && P.prefs) {
       var o = me === 'M' ? 'E' : 'M';
-      kinds = '<div class="group"><h2>Me prévenir quand</h2>' + [['added', pname(o) + ' ajoute un titre', 'Regroupé si elle en ajoute plusieurs d’un coup.'], ['release', 'Un titre de ma liste sort', 'Pour les titres ajoutés avant leur sortie, à 8 h le jour J.'], ['gone', 'Un titre quitte mes plateformes', 'Vérifié toutes les 6 h.']].map(function (k) {
+      kinds = '<div class="group"><h2>Me prévenir quand</h2>' + [['added', pname(o) + ' ajoute un titre', 'Regroupé si elle en ajoute plusieurs d’un coup.'], ['release', 'Un titre de ma liste sort', 'Pour les titres ajoutés avant leur sortie, le jour J.'], ['gone', 'Un titre quitte mes plateformes', 'Vérifié toutes les 6 h.']].map(function (k) {
         var on = P.prefs[k[0]] !== false;
         return '<button class="card" style="text-align:left;width:100%" data-act="pushpref" data-k="' + k[0] + '" aria-pressed="' + on + '"><span class="ct"><b>' + esc(k[1]) + '</b><span>' + esc(k[2]) + '</span></span><span class="st ' + (on ? 'ok' : 'no') + '">' + (on ? 'Oui' : 'Non') + '</span></button>';
-      }).join('') + '<span class="help">Cet appareil est réglé sur le profil « ' + esc(pname(me)) + ' ». Pour changer, réactivez les notifications après avoir choisi le profil.</span></div>';
+      }).join('') + (P.prefs.release !== false ? '<div class="card"><span class="ct"><label for="pushhour"><b>Heure de la notification de sortie</b></label><span>Envoyée ce jour-là à l’heure choisie (heure de Bruxelles).</span></span><select id="pushhour" class="fld" style="width:auto" aria-label="Heure">' + Array.apply(null, Array(24)).map(function (_, h) { return '<option value="' + h + '"' + (h === P.prefs.hour ? ' selected' : '') + '>' + h + ' h</option>'; }).join('') + '</select></div>' : '') + '<span class="help">Cet appareil est réglé sur le profil « ' + esc(pname(me)) + ' ». Pour changer, réactivez les notifications après avoir choisi le profil.</span></div>';
     }
     return '<div class="group"><div class="sec"><h2>État</h2>' + lbl + '</div>' + (btns ? '<div style="display:flex;gap:10px">' + btns + '</div>' : '') + (P.msg ? '<div class="notice" role="status">' + esc(P.msg) + '</div>' : '') + '<span class="help">' + help + '</span></div>' + kinds;
   }
@@ -1645,7 +1645,11 @@
   });
   document.addEventListener('change', function (ev) {
     var t = ev.target;
-    if (t.dataset && t.dataset.prof) { var v = t.value.trim() || (t.dataset.prof === 'M' ? 'Moi' : 'Elle'); S.settings.profiles[t.dataset.prof] = v; save(); render(true); }
+    if (t.id === 'pushhour') {
+      var P0 = ui.push; if (!P0.endpoint) return;
+      api('/api/push/prefs', { method: 'POST', body: { endpoint: P0.endpoint, prefs: { hour: Number(t.value) } } }).then(function (r) { P0.prefs = r.prefs; toast('Notification de sortie à ' + r.prefs.hour + ' h'); }).catch(function (e) { toast(e.message); });
+    }
+    else if (t.dataset && t.dataset.prof) { var v = t.value.trim() || (t.dataset.prof === 'M' ? 'Moi' : 'Elle'); S.settings.profiles[t.dataset.prof] = v; save(); render(true); }
     else if (t.id === 'prog-s' || t.id === 'prog-e') {
       var pe = entry(ui.detail); if (!pe) return;
       var ps = t.id === 'prog-s' ? Number(t.value) : (pe.prog && pe.prog.s) || 0;

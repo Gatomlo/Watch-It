@@ -33,11 +33,14 @@ function subscribe(sub, profile) {
 function prefsOf(endpoint) {
   const row = store.db.prepare("SELECT prefs FROM push_subs WHERE endpoint = ?").get(String(endpoint || ""));
   let p = {}; try { p = JSON.parse(row && row.prefs) || {}; } catch (e) {}
-  return Object.fromEntries(KINDS.map((k) => [k, p[k] !== false]));
+  const out = Object.fromEntries(KINDS.map((k) => [k, p[k] !== false]));
+  out.hour = Number.isInteger(p.hour) && p.hour >= 0 && p.hour <= 23 ? p.hour : 8; // heure de la notification de sortie
+  return out;
 }
 function setPrefs(endpoint, prefs) {
   const cur = prefsOf(endpoint), next = {};
   KINDS.forEach((k) => { next[k] = prefs && typeof prefs[k] === "boolean" ? prefs[k] : cur[k]; });
+  next.hour = prefs && Number.isInteger(prefs.hour) && prefs.hour >= 0 && prefs.hour <= 23 ? prefs.hour : cur.hour;
   store.db.prepare("UPDATE push_subs SET prefs = ? WHERE endpoint = ?").run(JSON.stringify(next), String(endpoint || ""));
   return next;
 }
@@ -160,20 +163,34 @@ function localNow() {
   const g = (t) => f.find((p) => p.type === t).value;
   return { date: g("year") + "-" + g("month") + "-" + g("day"), hour: Number(g("hour")) };
 }
+// Chaque appareil choisit son heure (8 h par défaut) ; e.rn = { <empreinte appareil>: true } évite les doublons.
+// Seules les sorties d'hier ou d'aujourd'hui sont notifiées (un nouvel appareil ne reçoit pas tout l'historique).
+const crypto = require("crypto");
+const devKey = (endpoint) => crypto.createHash("sha1").update(endpoint).digest("hex").slice(0, 8);
 async function releaseCheck(now) {
   now = now || localNow();
-  if (now.hour < 8) return { sent: 0 }; // pas de notification en pleine nuit
   const state = store.getState(), version = store.getStateVersion();
-  const due = state.list.filter((e) => e.status === "todo" && e.d && e.d <= now.date && !e.rn);
+  const yesterday = new Date(Date.parse(now.date + "T12:00:00Z") - 86400000).toISOString().slice(0, 10);
+  const due = state.list.filter((e) => e.status === "todo" && e.d && e.d <= now.date && e.d >= yesterday && e.rn !== true);
   if (!due.length) return { sent: 0 };
-  due.forEach((e) => { e.rn = true; });
+  const rows = store.db.prepare("SELECT endpoint, data, prefs, profile FROM push_subs").all();
+  const jobs = [];
+  for (const r of rows) {
+    let p = {}; try { p = JSON.parse(r.prefs || "{}"); } catch (e) {}
+    const hour = Number.isInteger(p.hour) ? p.hour : 8, k = devKey(r.endpoint);
+    if (p.release === false || now.hour < hour) continue;
+    const mine = due.filter((e) => wantsIt(e, r.profile) && !(e.rn && e.rn[k]));
+    if (!mine.length) continue;
+    mine.forEach((e) => { e.rn = e.rn || {}; e.rn[k] = true; });
+    jobs.push({ r, mine });
+  }
+  if (!jobs.length) return { sent: 0 };
   if (store.saveState(state, version) == null) return { sent: 0, skipped: true };
   let sent = 0;
-  for (const u of ["M", "E"]) {
-    const mine = due.filter((e) => wantsIt(e, u));
-    if (!mine.length) continue;
+  for (const { r, mine } of jobs) {
     const body = mine.length === 1 ? "« " + mine[0].t + " » sort aujourd'hui." : mine.length + " titres de votre liste sortent : " + mine.slice(0, 3).map((e) => "« " + e.t + " »").join(", ") + (mine.length > 3 ? "…" : "") + ".";
-    sent += await send({ title: "mAIwatch · Sortie", body, tag: "maiwatch-release", url: "./" }, null, "release", u).catch(() => 0);
+    try { await sender(JSON.parse(r.data), { title: "mAIwatch · Sortie", body, tag: "maiwatch-release", url: "./" }); sent++; }
+    catch (e) { if (e.statusCode === 404 || e.statusCode === 410) unsubscribe(r.endpoint); }
   }
   return { sent, due: due.length };
 }
