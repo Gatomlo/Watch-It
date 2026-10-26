@@ -143,6 +143,15 @@ app.get("/api/session", (req, res) => {
   res.json({ authenticated: true, username: user ? user.username : null });
 });
 
+app.post("/api/account/username", requireAuth, (req, res) => {
+  const username = String((req.body && req.body.username) || "").trim();
+  if (!username || username.length > 40) return res.status(400).json({ error: "Identifiant invalide (1 à 40 caractères)." });
+  const existing = db.getUser(username);
+  if (existing && existing.id !== req.session.userId) return res.status(409).json({ error: "Cet identifiant est déjà utilisé." });
+  db.updateUsername(req.session.userId, username);
+  res.json({ ok: true, username });
+});
+
 app.post("/api/account/password", requireAuth, (req, res) => {
   const { currentPassword, newPassword } = req.body || {};
   if (typeof currentPassword !== "string" || typeof newPassword !== "string" || newPassword.length < 8) {

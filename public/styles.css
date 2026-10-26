@@ -207,3 +207,9 @@ select.fld{appearance:auto}
 .prog select{height:44px;min-width:0;flex:1}
 .badge.go{border:0;background:var(--accent);color:var(--ink);font-weight:800}
 .seg.wrap{flex-wrap:wrap}.seg.wrap .chip{flex:1 1 30%}
+
+/* --- Réglages : menu et sous-pages --- */
+.who{display:flex;align-items:center;gap:14px;padding:14px;border-radius:16px;background:var(--surface);border:1px solid var(--line2)}
+.who .av{flex:none;width:44px;height:44px;border-radius:22px;background:var(--accent);color:var(--ink);font-weight:800;font-size:18px;display:flex;align-items:center;justify-content:center}
+.mi .ct span.w{color:var(--warn);font-weight:600}
+.crow[aria-pressed="true"]{background:var(--surface);border-radius:10px}

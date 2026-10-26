@@ -61,16 +61,16 @@
   var CFG = { tmdb: true, tmdbKey: { hasKey: true, last4: null, source: 'app' }, region: 'BE', ai: { provider: 'claude', hasKey: false, last4: null, tested: false } };
   var AV = {};              // disponibilité des titres de la liste : id -> { f[], r[], b[], trailer }
   var AV_AT = 0;
-  var PV = {};              // plateformes connues : id -> { id, name, logo }
+  var PV = {}, PVL = [];    // plateformes connues : id -> { id, name, logo } ; PVL = même liste, dans l'ordre de popularité
   var KNOWN = {};           // fiches légères vues dans les résultats : id -> item
   try { var a = JSON.parse(localStorage.getItem('maiwatch-av') || 'null'); if (a && a.map) { AV = a.map; AV_AT = a.at || 0; } } catch (e) {}
-  try { var pv0 = JSON.parse(localStorage.getItem('maiwatch-pv') || 'null'); if (pv0) pv0.forEach(function (p) { PV[p.id] = p; }); } catch (e) {}
+  try { var pv0 = JSON.parse(localStorage.getItem('maiwatch-pv') || 'null'); if (pv0) pv0.forEach(function (p) { PV[p.id] = p; }); PVL = pv0; } catch (e) {}
 
   var ui = {
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
     tab: 'me', sug: {}, sugVer: 0, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
     impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false,
-    soon: null, cs: 'envie', cols: [], tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
+    sset: 'menu', accMsg: '', soon: null, cs: 'envie', cols: [], tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
   };
   var booted = false, isAuthenticated = false, currentUsername = '';
 
@@ -255,7 +255,7 @@
   function loadProviders(force) {
     if (!force && Object.keys(PV).length) return Promise.resolve();
     return api('/api/providers?region=' + encodeURIComponent(S.settings.region)).then(function (list) {
-      PV = {}; list.forEach(function (p) { PV[p.id] = p; });
+      PV = {}; PVL = list; list.forEach(function (p) { PV[p.id] = p; });
       try { localStorage.setItem('maiwatch-pv', JSON.stringify(list)); } catch (e) {}
     }).catch(function () {});
   }
@@ -703,44 +703,116 @@
     else if (P.st === 'denied') { lbl = '<span class="st bad">Bloquées</span>'; help = 'Les notifications sont bloquées pour ce site : autorisez-les dans les réglages du navigateur.'; }
     else if (P.st === 'on') { lbl = '<span class="st ok">Activées</span>'; help = 'Vous serez prévenu quand un titre de votre liste quitte l’une de vos plateformes (vérification toutes les 6 h).'; btns = '<button class="btn ghost" style="height:44px" data-act="pushtest">Envoyer un test</button><button class="btn ghost" style="height:44px" data-act="pushoff">Désactiver</button>'; }
     else { lbl = '<span class="st no">Désactivées</span>'; help = 'Recevez une notification quand un titre de votre liste quitte l’une de vos plateformes. À activer sur chaque appareil.'; btns = '<button class="btn ghost" style="height:44px" data-act="pushon">Activer sur cet appareil</button>'; }
-    return '<div class="group"><div class="sec"><h2>Notifications</h2>' + lbl + '</div>' + (btns ? '<div style="display:flex;gap:10px">' + btns + '</div>' : '') + (P.msg ? '<div class="notice" role="status">' + esc(P.msg) + '</div>' : '') + '<span class="help">' + help + '</span></div>';
+    return '<div class="group"><div class="sec"><h2>État</h2>' + lbl + '</div>' + (btns ? '<div style="display:flex;gap:10px">' + btns + '</div>' : '') + (P.msg ? '<div class="notice" role="status">' + esc(P.msg) + '</div>' : '') + '<span class="help">' + help + '</span></div>';
   }
-  V.settings = function () {
-    var A = CFG.ai;
-    var st = A.hasKey ? (A.tested ? '<span class="st ok">Clé testée</span>' : '<span class="st no">Non testée</span>') : '<span class="st no">Aucune clé</span>';
+  // Réglages : un menu de rubriques, chacune dans sa page (ui.sset).
+  function platRows() {
+    var q = norm(ui.pvq);
+    var list = PVL.filter(function (p) { return !q || norm(p.name).indexOf(q) >= 0; });
+    if (!PVL.length) return '<span class="help">Chargement des plateformes…</span>';
+    if (!list.length) return '<span class="help">Aucune plateforme ne correspond à « ' + esc(ui.pvq) + ' ».</span>';
+    return list.map(function (p) { return crow('mp', p.id, p.name, platsOn().indexOf(p.id) >= 0 ? 'Choisie' : '', platsOn().indexOf(p.id) >= 0, logoOf(p.id)); }).join('');
+  }
+  function mrow(key, icon, title, sub) {
+    return '<button class="mi" data-act="sset" data-v="' + key + '">' + I(icon, '') + '<span class="ct"><b>' + title + '</b><span>' + sub + '</span></span>' + I('chev') + '</button>';
+  }
+  function subHeader(title) { return '<header class="top tight">' + back() + '<h1 class="s">' + title + '</h1></header>'; }
+
+  function setMenu() {
+    var T = CFG.tmdbKey || {}, A = CFG.ai, np = platsOn().length;
+    var plSub = np ? np + ' choisie' + (np > 1 ? 's' : '') + ' : ' + esc(platsOn().slice(0, 3).map(pnameOf).join(', ') + (np > 3 ? '…' : '')) : '<span class="w">Aucune choisie</span>';
+    var tmSub = T.hasKey ? 'Clé enregistrée' : '<span class="w">À configurer : sans clé, rien ne s’affiche</span>';
+    var aiSub = A.hasKey ? esc(PROVS[A.provider]) + (A.tested ? ' · testé' : ' · non testé') : 'Facultatif · non configuré';
+    var P = ui.push, pSub = P.st === 'on' ? 'Activées sur cet appareil' : (P.st === 'denied' ? 'Bloquées par le navigateur' : (P.st === 'unsupported' ? 'Indisponibles ici' : 'Désactivées'));
+    return '<header class="top tight">' + back() + '<h1 class="s">Réglages</h1></header>' +
+      '<div class="who"><span class="av">' + esc((currentUsername || '?').charAt(0).toUpperCase()) + '</span><div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span class="help">Connecté en tant que</span><b style="font-size:16px;overflow-wrap:anywhere">' + esc(currentUsername || 'identifiant inconnu') + '</b></div></div>' +
+      '<div class="group"><h2>Cet appareil est utilisé par</h2><div class="seg">' + ['M', 'E'].map(function (u) { return '<button class="chip' + (me === u ? ' on' : '') + '" data-act="profile" data-u="' + u + '" aria-pressed="' + (me === u) + '"><span class="ava ' + u + '">' + esc(initial(u)) + '</span>' + esc(pname(u)) + '</button>'; }).join('') + '</div></div>' +
+      '<div class="group"><h2>Notre foyer</h2><div class="menu">' + mrow('plats', 'play', 'Plateformes de streaming', plSub) + mrow('profils', 'checkc', 'Profils', esc(pname('M') + ' · ' + pname('E'))) + mrow('lists', 'list', 'Listes thématiques', S.collections.length + ' liste' + (S.collections.length > 1 ? 's' : '')) + '</div></div>' +
+      '<div class="group"><h2>Services</h2><div class="menu">' + mrow('tmdb', 'search', 'Films et séries (TMDB)', tmSub) + mrow('ai', 'spark', 'Assistant d’envies', aiSub) + mrow('notif', 'dice', 'Notifications', pSub) + '</div></div>' +
+      '<div class="group"><h2>Données</h2><div class="menu"><button class="mi" data-act="push" data-to="import">' + I('dl').replace('class="ico "', 'class="ico" style="stroke:var(--accent)"') + '<span class="ct"><b>Importer nos films et séries vus</b><span>Liste, CSV, Letterboxd, Trakt, Netflix</span></span>' + I('chev') + '</button>' +
+      '<button class="mi" data-act="export">' + I('ul') + '<span class="ct"><b>Exporter la liste</b><span>Fichier CSV</span></span></button></div></div>' +
+      '<div class="group"><h2>Application</h2><div class="menu">' + mrow('theme', 'gear', 'Apparence', THEME === 'light' ? 'Clair' : (THEME === 'auto' ? 'Automatique' : 'Sombre')) + mrow('account', 'out', 'Compte', 'Identifiant, mot de passe, déconnexion') + '</div></div>' +
+      '<p class="cred">Films, séries, affiches et bandes-annonces : TMDB. Ce produit utilise l’API TMDB mais n’est ni approuvé ni certifié par TMDB. Informations « où regarder » : JustWatch, via TMDB.</p>';
+  }
+
+  function setPlats() {
+    var mine = platsOn();
+    var region = '<select id="region" class="fld" aria-label="Pays">' + REGIONS.map(function (r) { return '<option value="' + r[0] + '"' + (S.settings.region === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; }).join('') + '</select>';
+    var sel = mine.length ? mine.map(function (id) {
+      return '<div class="card"><span style="display:flex;align-items:center">' + logoOf(id) + '</span><span class="ct"><b>' + esc(pnameOf(id)) + '</b></span><button class="link" style="min-height:44px" data-act="tog" data-k="mp" data-v="' + id + '" aria-label="Retirer ' + esc(pnameOf(id)) + '">Retirer</button></div>';
+    }).join('') : '<div class="empty">Aucune plateforme choisie pour l’instant.<br>Cochez ci-dessous celles auxquelles vous êtes abonnés.</div>';
+    var region0 = (REGIONS.filter(function (r) { return r[0] === S.settings.region; })[0] || [S.settings.region, S.settings.region])[1];
+    return subHeader('Plateformes') +
+      '<div class="group"><div class="sec"><h2>Mes plateformes</h2><span class="st ' + (mine.length ? 'ok' : 'no') + '">' + mine.length + ' choisie' + (mine.length > 1 ? 's' : '') + '</span></div>' + sel + '</div>' +
+      '<div class="group"><h2>Pays</h2>' + region + '<span class="help">Les plateformes proposées et les disponibilités dépendent du pays. Changer de pays remet la liste à zéro.</span></div>' +
+      '<div class="group"><div class="sec"><h2>Toutes les plateformes · ' + esc(region0) + '</h2><span class="help">' + PVL.length + ' disponible' + (PVL.length > 1 ? 's' : '') + '</span></div>' +
+      '<label for="pvq" style="position:absolute;left:-9999px">Chercher une plateforme</label><input id="pvq" class="fsearch" type="search" autocomplete="off" placeholder="Chercher (Netflix, Max, Canal+…)" value="' + esc(ui.pvq) + '">' +
+      '<div id="pvlist">' + platRows() + '</div><span class="help">Source : TMDB / JustWatch. Si votre plateforme manque, cherchez-la sous son nom d’origine (par exemple « Max » ou « HBO Max »).</span></div>';
+  }
+
+  function setProfils() {
     var cnt = { M: 0, E: 0 };
     S.list.forEach(function (e) { if (e.status === 'seen') { if (e.r.M) cnt.M++; if (e.r.E) cnt.E++; } });
-    var provs = Object.keys(PV).map(function (k) { return PV[k]; });
-    var q = norm(ui.pvq);
-    var shownP = provs.filter(function (p) { return !q || norm(p.name).indexOf(q) >= 0; });
-    var rows = shownP.slice(0, q ? 60 : 18).map(function (p) { return crow('mp', p.id, p.name, '', platsOn().indexOf(p.id) >= 0, logoOf(p.id)); }).join('');
-    var region = '<select id="region" class="fld" aria-label="Région">' + REGIONS.map(function (r) { return '<option value="' + r[0] + '"' + (S.settings.region === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; }).join('') + '</select>';
-    var T = CFG.tmdbKey || {};
-    return '<header class="top tight">' + back() + '<h1 class="s">Réglages</h1></header>' +
-      '<div class="group"><div class="sec"><h2>Films et séries (TMDB)</h2>' + (T.hasKey ? '<span class="st ok">Clé enregistrée</span>' : '<span class="st no">Aucune clé</span>') + '</div>' + (T.source === 'env' ? '<span class="help">Clé fournie par le serveur (variable d’environnement).</span>' : '') + tmdbForm(false) + '</div>' +
-      '<div class="group"><div class="sec"><h2>Nos plateformes</h2></div>' + region +
-      '<label for="pvq" style="position:absolute;left:-9999px">Chercher une plateforme</label><input id="pvq" class="fsearch" type="search" autocomplete="off" placeholder="Chercher une plateforme" value="' + esc(ui.pvq) + '">' +
-      '<div id="pvlist">' + (rows || '<span class="help">' + (provs.length ? 'Aucune plateforme ne correspond.' : 'Chargement des plateformes…') + '</span>') + '</div></div>' +
-      '<div class="group"><h2>Listes thématiques</h2>' + S.collections.map(function (c) {
+    return subHeader('Profils') +
+      '<p class="help" style="margin:0;line-height:1.5">Le foyer partage un seul compte, avec deux profils : chacun a ses propres notes et ses suggestions.</p>' +
+      '<div class="group"><div class="pwd"><label class="help" for="pn-M">Premier profil</label><input id="pn-M" class="fld" data-prof="M" value="' + esc(pname('M')) + '" maxlength="20"><label class="help" for="pn-E">Second profil</label><input id="pn-E" class="fld" data-prof="E" value="' + esc(pname('E')) + '" maxlength="20"></div></div>' +
+      '<span class="help">' + esc(pname('M')) + ' : ' + cnt.M + ' titre' + (cnt.M > 1 ? 's' : '') + ' noté' + (cnt.M > 1 ? 's' : '') + ' · ' + esc(pname('E')) + ' : ' + cnt.E + ' titre' + (cnt.E > 1 ? 's' : '') + ' noté' + (cnt.E > 1 ? 's' : '') + '</span>';
+  }
+
+  function setLists() {
+    return subHeader('Listes thématiques') +
+      '<p class="help" style="margin:0;line-height:1.5">Rangez un titre dans une ou plusieurs listes depuis sa fiche, puis filtrez « À voir » par liste.</p>' +
+      '<div class="group">' + (S.collections.length ? S.collections.map(function (c) {
         var n = S.list.filter(function (e) { return (e.l || []).indexOf(c.id) >= 0; }).length;
         return '<div style="display:flex;gap:8px;align-items:center"><label for="cn-' + esc(c.id) + '" style="position:absolute;left:-9999px">Nom de la liste</label><input id="cn-' + esc(c.id) + '" class="fld" data-colname="' + esc(c.id) + '" value="' + esc(c.name) + '" maxlength="30"><span class="help" style="flex:none">' + n + '</span><button class="icon" data-act="coldel" data-c="' + esc(c.id) + '" aria-label="Supprimer la liste ' + esc(c.name) + '">' + I('trash') + '</button></div>';
-      }).join('') + '<div style="display:flex;gap:8px"><label for="newcol" style="position:absolute;left:-9999px">Nouvelle liste</label><input id="newcol" class="fld" maxlength="30" placeholder="Nouvelle liste" autocomplete="off"><button class="btn ghost" style="flex:none;width:auto;height:48px" data-act="colnew">Créer</button></div><span class="help">Rangez les titres dans des listes (fiche d’un titre) puis filtrez « À voir » par liste.</span></div>' +
-      '<div class="group"><h2>Profils</h2><div class="pwd"><label class="help" for="pn-M">Premier profil</label><input id="pn-M" class="fld" data-prof="M" value="' + esc(pname('M')) + '" maxlength="20"><label class="help" for="pn-E">Second profil</label><input id="pn-E" class="fld" data-prof="E" value="' + esc(pname('E')) + '" maxlength="20"></div>' +
-      '<span class="help">' + esc(pname('M')) + ' : ' + cnt.M + ' titres notés · ' + esc(pname('E')) + ' : ' + cnt.E + '</span></div>' +
-      '<div class="group"><h2>Profil actif sur cet appareil</h2><div class="seg">' + ['M', 'E'].map(function (u) { return '<button class="chip' + (me === u ? ' on' : '') + '" data-act="profile" data-u="' + u + '" aria-pressed="' + (me === u) + '"><span class="ava ' + u + '">' + esc(initial(u)) + '</span>' + esc(pname(u)) + '</button>'; }).join('') + '</div></div>' +
-      '<div class="group"><div class="sec"><h2>Assistant d’envies</h2>' + st + '</div><div class="seg">' + Object.keys(PROVS).map(function (p) { return '<button class="chip" style="' + (A.provider === p ? 'background:var(--surface2);border-color:var(--accent)' : '') + '" data-act="aiprov" data-v="' + p + '" aria-pressed="' + (A.provider === p) + '">' + PROVS[p] + '</button>'; }).join('') + '</div>' +
+      }).join('') : '<div class="empty">Aucune liste pour l’instant.</div>') +
+      '<div style="display:flex;gap:8px"><label for="newcol" style="position:absolute;left:-9999px">Nouvelle liste</label><input id="newcol" class="fld" maxlength="30" placeholder="Nouvelle liste" autocomplete="off"><button class="btn ghost" style="flex:none;width:auto;height:48px" data-act="colnew">Créer</button></div></div>';
+  }
+
+  function setTmdb() {
+    var T = CFG.tmdbKey || {};
+    return subHeader('Films et séries (TMDB)') +
+      '<div class="sec"><h2>Clé TMDB</h2>' + (T.hasKey ? '<span class="st ok">Clé enregistrée</span>' : '<span class="st bad">Aucune clé</span>') + '</div>' +
+      (T.source === 'env' ? '<span class="help">Clé fournie par le serveur (variable d’environnement).</span>' : '') + tmdbForm(false) +
+      '<p class="cred">Films, séries, affiches et bandes-annonces : TMDB. Ce produit utilise l’API TMDB mais n’est ni approuvé ni certifié par TMDB. Informations « où regarder » : JustWatch, via TMDB.</p>';
+  }
+
+  function setAi() {
+    var A = CFG.ai;
+    var st = A.hasKey ? (A.tested ? '<span class="st ok">Clé testée</span>' : '<span class="st no">Non testée</span>') : '<span class="st no">Aucune clé</span>';
+    return subHeader('Assistant d’envies') +
+      '<p class="help" style="margin:0;line-height:1.5">Facultatif. Avec une clé API, « Ce soir » comprend vos envies écrites librement. Sans clé, la recherche reste possible par mots-clés.</p>' +
+      '<div class="group"><div class="sec"><h2>Fournisseur</h2>' + st + '</div><div class="seg">' + Object.keys(PROVS).map(function (p) { return '<button class="chip" style="' + (A.provider === p ? 'background:var(--surface2);border-color:var(--accent)' : '') + '" data-act="aiprov" data-v="' + p + '" aria-pressed="' + (A.provider === p) + '">' + PROVS[p] + '</button>'; }).join('') + '</div>' +
       '<label for="key" style="position:absolute;left:-9999px">Clé API ' + esc(PROVS[A.provider]) + '</label><input id="key" class="kinput" type="password" autocomplete="off" placeholder="' + (A.hasKey ? 'Clé enregistrée (…' + esc(A.last4) + '). Collez-en une autre pour la remplacer.' : 'Collez votre clé API ' + esc(PROVS[A.provider])) + '">' +
       '<div style="display:flex;gap:10px"><button class="btn ghost" style="height:44px" data-act="aisave"' + (ui.aiBusy ? ' disabled' : '') + '>' + (ui.aiBusy ? 'Test en cours…' : 'Enregistrer et tester') + '</button>' + (A.hasKey ? '<button class="btn ghost" style="height:44px" data-act="aiclear">Retirer la clé</button>' : '') + '</div>' +
       (ui.aiMsg ? '<div class="notice" role="status">' + esc(ui.aiMsg) + '</div>' : '') +
-      '<span class="help">Facultatif. La clé reste sur votre serveur, chiffrée : le navigateur ne la revoit jamais. Elle sert à comprendre vos envies et à classer des titres choisis par TMDB. Chaque recherche « Ce soir » envoie votre phrase et une courte liste de titres au fournisseur choisi.</span></div>' +
-      '<div class="group"><h2>Apparence</h2><div class="seg">' + [['dark', 'Sombre'], ['light', 'Clair'], ['auto', 'Auto']].map(function (t) { return '<button class="chip' + (THEME === t[0] ? ' on' : '') + '" data-act="theme" data-v="' + t[0] + '" aria-pressed="' + (THEME === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</div></div>' +
-      pushSection() +
-      '<div class="group"><h2>Données</h2><div class="menu"><button class="mi" data-act="push" data-to="import">' + I('dl').replace('class="ico "', 'class="ico" style="stroke:var(--accent)"') + '<span class="ct"><b>Importer nos films et séries vus</b><span>Pour que les suggestions nous ressemblent dès le départ</span></span>' + I('chev') + '</button>' +
-      '<button class="mi" data-act="export">' + I('ul') + '<span class="ct"><b>Exporter la liste</b><span>Fichier CSV</span></span></button></div></div>' +
-      '<div class="group"><h2>Compte</h2><form class="pwd" data-form="password"><input class="fld" type="password" name="cur" placeholder="Mot de passe actuel" autocomplete="current-password" required><input class="fld" type="password" name="nw" placeholder="Nouveau mot de passe (8 caractères minimum)" autocomplete="new-password" minlength="8" required><button class="btn ghost" style="height:44px" type="submit">Changer le mot de passe</button></form>' +
-      (ui.pwMsg ? '<div class="notice" role="status">' + esc(ui.pwMsg) + '</div>' : '') +
-      '<button class="btn ghost" style="height:44px" data-act="logout">' + I('out') + ' Se déconnecter</button></div>' +
-      '<p class="cred">Films, séries, affiches et bandes-annonces : TMDB. Ce produit utilise l’API TMDB mais n’est ni approuvé ni certifié par TMDB. Informations « où regarder » : JustWatch, via TMDB.</p>';
+      '<span class="help">La clé reste sur votre serveur, chiffrée : le navigateur ne la revoit jamais. Chaque recherche « Ce soir » envoie votre phrase et une courte liste de titres au fournisseur choisi.</span></div>';
+  }
+
+  function setTheme() {
+    return subHeader('Apparence') + '<div class="group"><div class="seg">' + [['dark', 'Sombre'], ['light', 'Clair'], ['auto', 'Auto']].map(function (t) { return '<button class="chip' + (THEME === t[0] ? ' on' : '') + '" data-act="theme" data-v="' + t[0] + '" aria-pressed="' + (THEME === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</div><span class="help">« Auto » suit le réglage clair ou sombre de votre téléphone. Ce choix est propre à cet appareil.</span></div>';
+  }
+
+  function setAccount() {
+    return subHeader('Compte') +
+      '<div class="who"><span class="av">' + esc((currentUsername || '?').charAt(0).toUpperCase()) + '</span><div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span class="help">Identifiant actuel</span><b style="font-size:16px;overflow-wrap:anywhere">' + esc(currentUsername || 'inconnu') + '</b></div></div>' +
+      '<div class="group"><h2>Changer l’identifiant</h2><form class="pwd" data-form="username"><label for="acc-user" style="position:absolute;left:-9999px">Nouvel identifiant</label><input id="acc-user" class="fld" name="username" value="' + esc(currentUsername || '') + '" maxlength="40" autocomplete="username" required><button class="btn ghost" style="height:44px" type="submit">Enregistrer l’identifiant</button></form>' + (ui.accMsg ? '<div class="notice" role="status">' + esc(ui.accMsg) + '</div>' : '') + '</div>' +
+      '<div class="group"><h2>Changer le mot de passe</h2><form class="pwd" data-form="password"><input class="fld" type="password" name="cur" placeholder="Mot de passe actuel" autocomplete="current-password" required><input class="fld" type="password" name="nw" placeholder="Nouveau mot de passe (8 caractères minimum)" autocomplete="new-password" minlength="8" required><button class="btn ghost" style="height:44px" type="submit">Changer le mot de passe</button></form>' + (ui.pwMsg ? '<div class="notice" role="status">' + esc(ui.pwMsg) + '</div>' : '') + '</div>' +
+      '<button class="btn ghost" style="height:44px" data-act="logout">' + I('out') + ' Se déconnecter</button>';
+  }
+
+  V.settings = function () {
+    switch (ui.sset) {
+      case 'plats': return setPlats();
+      case 'profils': return setProfils();
+      case 'lists': return setLists();
+      case 'tmdb': return setTmdb();
+      case 'ai': return setAi();
+      case 'notif': return subHeader('Notifications') + pushSection();
+      case 'theme': return setTheme();
+      case 'account': return setAccount();
+      default: return setMenu();
+    }
   };
 
   // Historique Netflix (CSV « Activité de visionnage » ou ViewingActivity.csv de l'export complet).
@@ -867,7 +939,7 @@
   function go(s, push) {
     if (push) ui.hist.push({ screen: ui.screen, detail: ui.detail }); else ui.hist = [];
     ui.screen = s; ui.sheet = null;
-    if (s === 'settings') { loadProviders(); refreshPush(); }
+    if (s === 'settings') { ui.sset = 'menu'; loadProviders(); refreshPush(); }
     if (s === 'import') loadTrakt();
     render();
   }
@@ -956,12 +1028,13 @@
   var A = {
     go: function (d) { ui.plats = []; ui.genres = []; ui.cols = []; go(d.to, false); },
     push: function (d) { go(d.to, true); },
-    back: function () { var h = ui.hist.pop(); if (h) { ui.screen = h.screen; ui.detail = h.detail; ui.sheet = null; render(true); } else go('home'); },
+    sset: function (d) { ui.sset = d.v; if (d.v === 'plats') { loadProviders(); ui.pvq = ''; } if (d.v === 'notif') refreshPush(); render(); },
+    back: function () { if (ui.screen === 'settings' && ui.sset !== 'menu') { ui.sset = 'menu'; render(); return; } var h = ui.hist.pop(); if (h) { ui.screen = h.screen; ui.detail = h.detail; ui.sheet = null; render(true); } else go('home'); },
     open: function (d) { openDetail(d.id); },
     tog: function (d) {
       var k = d.k, v = d.v;
       if (k === 'type') ui.type = v;
-      else if (k === 'mp') { var p = Number(v), i = S.settings.platforms.indexOf(p); if (i >= 0) S.settings.platforms.splice(i, 1); else S.settings.platforms.push(p); save(); detectChanges(); }
+      else if (k === 'mp') { var p = Number(v), i = S.settings.platforms.indexOf(p); if (i >= 0) S.settings.platforms.splice(i, 1); else S.settings.platforms.push(p); save(); detectChanges(); toast(pnameOf(p) + (i >= 0 ? ' retirée de vos plateformes' : ' ajoutée à vos plateformes') + ' (' + S.settings.platforms.length + ' au total)'); }
       else { var arr = k === 'plat' ? ui.plats : (k === 'col' ? ui.cols : ui.genres), val = k === 'plat' ? Number(v) : v, j = arr.indexOf(val); if (j >= 0) arr.splice(j, 1); else arr.push(val); }
       render(true);
     },
@@ -1050,7 +1123,7 @@
       ui.tmdbBusy = true; ui.tmdbMsg = ''; render(true);
       api('/api/tmdb-key', { method: 'PUT', body: { key: key } }).then(function (r) {
         CFG.tmdb = r.tmdb; CFG.tmdbKey = r.tmdbKey; ui.tmdbMsg = 'Clé TMDB vérifiée et enregistrée.';
-        ui.sug = {}; PV = {}; return loadProviders(true).then(function () { AV = {}; AV_AT = 0; refreshAvail(); });
+        ui.sug = {}; PV = {}; PVL = []; return loadProviders(true).then(function () { AV = {}; AV_AT = 0; refreshAvail(); });
       }).catch(function (e) { ui.tmdbMsg = e.message; }).finally(function () { ui.tmdbBusy = false; render(true); });
     },
     tmdbclear: function () {
@@ -1201,7 +1274,7 @@
     var t = ev.target;
     if (t.id === 'q') { ui.q = t.value; ui.sr = null; var r = document.getElementById('results'); clearTimeout(searchTimer); if (norm(ui.q).length < 2) { ui.srBusy = false; if (r) r.innerHTML = addResults(); } else { ui.srBusy = true; if (r) r.innerHTML = addResults(); searchTimer = setTimeout(runSearch, 300); } }
     else if (t.id === 'gq') { ui.fq = t.value; document.getElementById('glist').innerHTML = genreList(); }
-    else if (t.id === 'pvq') { ui.pvq = t.value; render(true); var el = document.getElementById('pvq'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
+    else if (t.id === 'pvq') { ui.pvq = t.value; var plist = document.getElementById('pvlist'); if (plist) plist.innerHTML = platRows(); }
     else if (t.id === 'envie') ui.envie = t.value;
     else if (t.id === 'imp') ui.impText = t.value;
     else if (t.dataset && t.dataset.note) { var e = entry(t.dataset.note); if (e) { e.note = t.value; clearTimeout(A._nt); A._nt = setTimeout(save, 600); } }
@@ -1231,7 +1304,7 @@
       rd.readAsText(t.files[0]);
     }
     else if (t.dataset && t.dataset.colname) { var co = S.collections.filter(function (x) { return x.id === t.dataset.colname; })[0]; if (co) { co.name = t.value.trim() || co.name; save(); render(true); } }
-    else if (t.id === 'region') { S.settings.region = t.value; PV = {}; S.settings.platforms = []; save(); loadProviders(true).then(function () { AV = {}; AV_AT = 0; refreshAvail(); render(true); }); }
+    else if (t.id === 'region') { S.settings.region = t.value; PV = {}; PVL = []; S.settings.platforms = []; save(); loadProviders(true).then(function () { AV = {}; AV_AT = 0; refreshAvail(); render(true); }); }
     else if (t.id === 'csv' && t.files && t.files[0]) {
       var f = new FileReader();
       f.onload = function () {
@@ -1270,6 +1343,10 @@
           ui.setup = false; isAuthenticated = true; currentUsername = j.username || ''; startSession();
         });
       }).catch(function () { ui.loginError = 'Pas de connexion au serveur.'; render(); });
+    } else if (form.dataset.form === 'username') {
+      var nu = String(fd.get('username') || '').trim();
+      api('/api/account/username', { method: 'POST', body: { username: nu } })
+        .then(function (r) { currentUsername = r.username; persistLocal(); ui.accMsg = 'Identifiant enregistré : ' + r.username + '.'; }).catch(function (e) { ui.accMsg = e.message; }).finally(function () { render(true); });
     } else if (form.dataset.form === 'password') {
       api('/api/account/password', { method: 'POST', body: { currentPassword: fd.get('cur'), newPassword: fd.get('nw') } })
         .then(function () { ui.pwMsg = 'Mot de passe changé.'; }).catch(function (e) { ui.pwMsg = e.message; }).finally(function () { render(true); });

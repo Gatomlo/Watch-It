@@ -168,7 +168,7 @@ async function providers(region) {
     const pr = (p.display_priorities && p.display_priorities[region]) != null ? p.display_priorities[region] : 999;
     if (!map[p.provider_id]) map[p.provider_id] = { id: p.provider_id, name: p.provider_name, logo: p.logo_path, pr };
   });
-  return Object.values(map).sort((a, b) => a.pr - b.pr).slice(0, 60).map(({ id, name, logo }) => ({ id, name, logo }));
+  return Object.values(map).sort((a, b) => a.pr - b.pr || a.name.localeCompare(b.name)).map(({ id, name, logo }) => ({ id, name, logo }));
 }
 
 async function discover(media, params) {
