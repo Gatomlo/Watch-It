@@ -612,12 +612,17 @@
       var f = d.av.f, shown = {};
       f.forEach(function (p) {
         var on = platsOn().indexOf(p) >= 0; shown[p] = 1;
-        where += '<div class="card' + (on ? '' : ' q') + '">' + logoOf(p) + '<span class="ct"><b>' + esc(pnameOf(p)) + '</b><span>Inclus dans l’abonnement</span></span><span class="st ' + (on ? 'ok' : 'no') + '">' + (on ? 'Dans votre abo' : 'Pas dans vos abos') + '</span>' + (linkFor(d, p) ? '<a class="icon" href="' + esc(linkFor(d, p)) + '" target="_blank" rel="noopener" aria-label="Ouvrir sur ' + esc(pnameOf(p)) + '">' + I('play') + '</a>' : '') + '</div>';
+        var lk = linkFor(d, p), body = logoOf(p) + '<span class="ct"><b>' + esc(pnameOf(p)) + '</b><span>' + (lk ? 'Ouvrir le titre sur ' + esc(pnameOf(p)) : 'Inclus dans l’abonnement') + '</span></span><span class="st ' + (on ? 'ok' : 'no') + '">' + (on ? 'Dans votre abo' : 'Pas dans vos abos') + '</span>' + (lk ? I('chev') : '');
+        where += lk ? '<a class="card link-card' + (on ? '' : ' q') + '" href="' + esc(lk) + '" target="_blank" rel="noopener" aria-label="Ouvrir ' + esc(d.t) + ' sur ' + esc(pnameOf(p)) + '">' + body + '</a>' : '<div class="card' + (on ? '' : ' q') + '">' + body + '</div>';
       });
       var extra = [];
-      d.avNames.r.forEach(function (n) { extra.push(n + ' (location)'); });
-      d.avNames.b.forEach(function (n) { if (d.avNames.r.indexOf(n) < 0) extra.push(n + ' (achat)'); });
-      if (extra.length) where += '<div class="card q"><span class="ct"><b>Location ou achat</b><span>' + esc(extra.slice(0, 5).join(' · ')) + '</span></span></div>';
+      function exLink(n, t) {
+        var ls = ui.lk[d.id], b = brandOf(n), hit = saOn() && linkOpt('plat') && Array.isArray(ls) ? ls.filter(function (l) { return brandOf(l.name) === b; })[0] : null;
+        return hit ? '<a href="' + esc(hit.link) + '" target="_blank" rel="noopener" style="color:var(--fg)">' + esc(n) + '</a> (' + t + ')' : esc(n + ' (' + t + ')');
+      }
+      d.avNames.r.forEach(function (n) { extra.push(exLink(n, 'location')); });
+      d.avNames.b.forEach(function (n) { if (d.avNames.r.indexOf(n) < 0) extra.push(exLink(n, 'achat')); });
+      if (extra.length) where += '<div class="card q"><span class="ct"><b>Location ou achat</b><span>' + extra.slice(0, 5).join(' · ') + '</span></span></div>';
       if (!where) where = '<div class="empty">Pas disponible en streaming dans votre région pour l’instant.</div>';
       if (shareLinks(d).length) where += '<button class="btn ghost" data-act="share" data-id="' + esc(id) + '">' + I('share') + ' Partager la fiche</button>';
       if (saOn() && linkOpt('plat') && ui.lk[id] === 'loading') where += '<span class="help">Recherche du lien direct…</span>';

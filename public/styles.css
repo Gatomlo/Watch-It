@@ -260,3 +260,7 @@ button.play{border:0;padding:0;cursor:pointer}
 .avs{display:inline-flex;gap:3px;flex:none}
 .rowx{display:flex;flex-direction:column;gap:6px}
 .rowx .want{align-self:flex-start;margin-left:82px;height:36px;padding:0 14px;font-size:13px}
+
+/* --- Carte plateforme cliquable (lien direct) --- */
+a.card{text-decoration:none;color:inherit}
+a.card .ico{flex:none;opacity:.6}
