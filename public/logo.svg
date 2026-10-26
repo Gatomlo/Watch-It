@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="mAIwatch">
+  <rect width="512" height="512" rx="112" fill="#17141a"/>
+  <circle cx="244" cy="268" r="136" fill="none" stroke="#e8825c" stroke-width="28"/>
+  <path d="M212 200l104 68-104 68z" fill="#f3ece4"/>
+  <path d="M390 74l13 38 38 13-38 13-13 38-13-38-38-13 38-13z" fill="#e8825c"/>
+</svg>
