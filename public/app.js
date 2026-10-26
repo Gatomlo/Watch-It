@@ -1687,7 +1687,10 @@
       x = x.replace(new RegExp('\\s*[|–—-]\\s*' + PLAT_RE + '\\b.*$', 'i'), '');
       x = x.replace(new RegExp('\\s+(?:sur|on)\\s+' + PLAT_RE + '\\b[\\s!?.]*$', 'i'), '');
     }
-    return x.replace(/[!?«»"“”]+/g, ' ').replace(/\s+/g, ' ').trim();
+    x = x.replace(/[!?«»"“”]+/g, ' ').replace(/\s+/g, ' ').trim();
+    // « Mr Robot Season 1 », « Dark - Saison 2 épisode 3 », « Lupin S02E05 » : on ne cherche que le titre de la série.
+    var cut = x.replace(/[\s:,–—-]+(?:(?:season|saison|staffel|temporada|stagione|series|série)\s*\d+|s\d{1,2}(?:\s*e\d{1,3})?|(?:episode|épisode|ep)\s*\d+)\b.*$/i, '').trim();
+    return cut || x;
   }
 
   // Partage depuis une autre appli (share_target) : ?title=…&text=…&url=… → recherche pré-remplie.
