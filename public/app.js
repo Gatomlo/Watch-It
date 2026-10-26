@@ -77,7 +77,7 @@
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
     tab: 'me', sug: {}, sugOff: {}, mi: {}, sugVer: 0, epOpen: false, epSeason: null, epData: {}, epExp: {}, epErr: {}, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
     impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false,
-    sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], who: 'all', lk: {}, saMode: null, saMsg: '', saBusy: false, tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
+    sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], who: 'all', lk: {}, drawWho: 'both', saMode: null, saMsg: '', saBusy: false, tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
   };
   var booted = false, isAuthenticated = false, currentUsername = '';
 
@@ -107,7 +107,7 @@
   }
   function addEntry(it, status) {
     var e = Object.assign(lite(it), { by: me, at: todayISO(), status: status || 'todo', r: {}, note: '' });
-    if (e.status === 'todo' && S.settings.addFor !== 'me') e.w = { M: true, E: true }; // par défaut, voulu par les deux
+    if (e.status === 'todo' && S.settings.addFor === 'both') e.w = { M: true, E: true }; // option : voulu par les deux dès l'ajout
     S.list.push(e);
     return e;
   }
@@ -393,12 +393,19 @@
     return true;
   }
   function other() { return me === 'M' ? 'E' : 'M'; }
-  function whoOk(e) {
-    if (ui.who === 'me') return wants(e, me);
-    if (ui.who === 'other') return wants(e, other());
-    if (ui.who === 'both') return wants(e, 'M') && wants(e, 'E');
+  function whoOk(e, w) {
+    w = w || ui.who;
+    if (w === 'me') return wants(e, me);
+    if (w === 'other') return wants(e, other());
+    if (w === 'both') return wants(e, 'M') && wants(e, 'E');
     return true;
   }
+  // « Au hasard » : sauf filtre « Qui veut le voir » choisi, on tire parmi les titres voulus par les deux.
+  function drawSwitch() {
+    if (ui.who !== 'all') return '<span class="help" style="text-align:center">Filtre « Qui veut le voir : ' + esc(whoLabel(ui.who)) + ' » appliqué.</span>';
+    return '<div class="seg" role="group" aria-label="Tirer parmi">' + [['both', 'Voulus par les deux'], ['all', 'Tous']].map(function (x) { return '<button class="chip' + (ui.drawWho === x[0] ? ' on' : '') + '" data-act="drawwho" data-v="' + x[0] + '" aria-pressed="' + (ui.drawWho === x[0]) + '">' + x[1] + '</button>'; }).join('') + '</div>';
+  }
+  function drawWho() { return ui.who !== 'all' ? ui.who : ui.drawWho; }
   function whoLabel(w) { return w === 'me' ? 'Moi' : w === 'other' ? pname(other()) : w === 'both' ? 'Les deux' : 'Tous'; }
   function pool(scr) {
     scr = scr || ui.screen;
@@ -965,8 +972,8 @@
   function setProfils() {
     var cnt = { M: 0, E: 0 };
     S.list.forEach(function (e) { if (e.status === 'seen') { if (e.r.M) cnt.M++; if (e.r.E) cnt.E++; } });
-    var af = S.settings.addFor === 'me' ? 'me' : 'both';
-    var addFor = '<div class="group"><h2>Quand j’ajoute un titre à voir</h2><div class="seg" role="group" aria-label="Qui veut le voir par défaut">' + [['both', 'Nous deux'], ['me', 'Moi seul']].map(function (x) { return '<button class="chip' + (af === x[0] ? ' on' : '') + '" data-act="addfor" data-v="' + x[0] + '" aria-pressed="' + (af === x[0]) + '">' + x[1] + '</button>'; }).join('') + '</div><span class="help">' + (af === 'both' ? 'Le titre est marqué comme voulu par vous deux ; l’autre n’est pas notifié. Chacun peut retirer son envie depuis la fiche.' : 'Seul celui qui l’ajoute le veut ; l’autre est notifié et peut répondre « Moi aussi ».') + '</span></div>';
+    var af = S.settings.addFor === 'both' ? 'both' : 'me';
+    var addFor = '<div class="group"><h2>Quand j’ajoute un titre à voir</h2><div class="seg" role="group" aria-label="Qui veut le voir par défaut">' + [['me', 'Moi seul'], ['both', 'Nous deux']].map(function (x) { return '<button class="chip' + (af === x[0] ? ' on' : '') + '" data-act="addfor" data-v="' + x[0] + '" aria-pressed="' + (af === x[0]) + '">' + x[1] + '</button>'; }).join('') + '</div><span class="help">' + (af === 'both' ? 'Le titre est marqué comme voulu par vous deux ; l’autre n’est pas notifié. Chacun peut retirer son envie depuis la fiche.' : 'Seul celui qui l’ajoute le veut ; l’autre est notifié et peut répondre « Moi aussi ».') + '</span></div>';
     return subHeader('Profils') +
       '<p class="help" style="margin:0;line-height:1.5">Le foyer partage un seul compte, avec deux profils : chacun a ses propres notes et ses suggestions.</p>' +
       '<div class="group"><div class="pwd"><label class="help" for="pn-M">Premier profil</label><input id="pn-M" class="fld" data-prof="M" value="' + esc(pname('M')) + '" maxlength="20"><label class="help" for="pn-E">Second profil</label><input id="pn-E" class="fld" data-prof="E" value="' + esc(pname('E')) + '" maxlength="20"></div></div>' +
@@ -1157,7 +1164,7 @@
     }
     if (s.type === 'draw') {
       var d = s.id ? entry(s.id) : null;
-      return '<div class="scrim" data-scrim="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Tirage au sort">' + (d ? '<span class="help" style="text-transform:uppercase;letter-spacing:.08em;font-weight:700">Ce soir, ce sera</span><div style="display:flex;gap:14px">' + poster(d) + '<div class="rb"><h3>' + esc(d.t) + '</h3><span class="meta">' + meta(d) + '</span>' + badges(d) + '</div></div><button class="btn" data-act="open" data-id="' + esc(d.id) + '">Voir la fiche</button><button class="btn ghost" data-act="draw">Un autre</button>' : '<h3>Rien à tirer</h3><span class="help">Aucun titre de la liste ne correspond à vos filtres et à vos plateformes.</span>') + '<button class="link" data-act="closesheet" style="align-self:center">Fermer</button></div></div>';
+      return '<div class="scrim" data-scrim="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Tirage au sort">' + (d ? '<span class="help" style="text-transform:uppercase;letter-spacing:.08em;font-weight:700">Ce soir, ce sera</span><div style="display:flex;gap:14px">' + poster(d) + '<div class="rb"><h3>' + esc(d.t) + '</h3><span class="meta">' + meta(d) + '</span>' + badges(d) + '</div></div><button class="btn" data-act="open" data-id="' + esc(d.id) + '">Voir la fiche</button><button class="btn ghost" data-act="draw">Un autre</button>' : '<h3>Rien à tirer</h3><span class="help">' + (drawWho() === 'both' && ui.who === 'all' ? 'Aucun titre voulu par vous deux ne correspond à vos filtres et à vos plateformes.' : 'Aucun titre de la liste ne correspond à vos filtres et à vos plateformes.') + '</span>') + drawSwitch() + '<button class="link" data-act="closesheet" style="align-self:center">Fermer</button></div></div>';
     }
     return '';
   }
@@ -1342,8 +1349,9 @@
     cs: function (d) { ui.cs = d.v; render(true); },
     theme: function (d) { THEME = d.v; try { localStorage.setItem('maiwatch-theme', THEME); } catch (e) {} applyTheme(); render(true); },
     retrysug: function () { ui.sug[ui.tab] = null; render(true); },
+    drawwho: function (d) { ui.drawWho = d.v; ui.sheet = null; A.draw(); },
     draw: function () {
-      var ids = S.list.filter(function (e) { return e.status === 'todo' && passes(e) && (!availKnown(e) || !platsOn().length || avail(e).length); }).map(function (e) { return e.id; });
+      var ids = S.list.filter(function (e) { return e.status === 'todo' && passes(e, 'who') && whoOk(e, drawWho()) && (!availKnown(e) || !platsOn().length || avail(e).length); }).map(function (e) { return e.id; });
       var prev = ui.sheet && ui.sheet.id, p2 = ids.filter(function (i) { return i !== prev; }); if (p2.length) ids = p2;
       ui.sheet = { type: 'draw', id: ids.length ? ids[Math.floor(Math.random() * ids.length)] : null }; render(true);
     },
