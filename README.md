@@ -41,16 +41,71 @@ Réglages > Assistant d'envies : choisir Claude, Gemini ou Mistral, coller la cl
 
 Variables d'environnement facultatives : `PORT` (3100), `DATA_DIR` (`./data`), `COOKIE_SECURE` (`auto` par défaut : le cookie devient sécurisé dès que le site est servi en HTTPS), `AI_MODEL_CLAUDE`, `AI_MODEL_GEMINI`, `AI_MODEL_MISTRAL`. Un fichier `.env` est lu s'il existe.
 
-## Déploiement (même méthode que Fée Lezcomptes)
+## Déploiement sur un serveur (git + pm2 + nginx)
 
-VPS + pm2 + nginx (port 3100 par défaut) :
+Même méthode que Fée Lezcomptes. mAIwatch écoute sur le port **3100**, il peut donc tourner sur le même VPS (Fée Lezcomptes est sur 3000), avec son propre dossier et son propre nom de domaine.
+
+**1. Prérequis** : Node.js ≥ 22.5 (`node -v`), pm2 (`sudo npm install -g pm2`), nginx + certbot (`sudo apt-get install -y nginx certbot python3-certbot-nginx`), et un enregistrement DNS (type A) `films.tondomaine.fr` vers l'IP du serveur.
+
+**2. Installer depuis git**
 
 ```bash
-git pull && npm install --omit=dev && pm2 restart maiwatch   # première fois : pm2 start src/server.js --name maiwatch
+cd /home/debian
+git clone https://github.com/Gatomlo/mAIwatch.git maiwatch
+cd maiwatch
+npm install --omit=dev
+pm2 start src/server.js --name maiwatch
+pm2 save
+pm2 startup      # première fois seulement : suivre l'instruction affichée
 ```
 
-Derrière nginx : `proxy_pass http://127.0.0.1:3100;` avec HTTPS (obligatoire pour installer l'appli) et les en-têtes `X-Forwarded-Proto` / `X-Forwarded-For`.
-Mot de passe oublié : `npm run set-password -- identifiant nouveau_mot_de_passe` (sinon, Réglages > Compte).
+**3. Lire le code d'installation**, affiché au premier démarrage tant qu'aucun compte n'existe :
+
+```bash
+pm2 logs maiwatch --lines 30 --nostream
+```
+
+**4. nginx + HTTPS** : créer `/etc/nginx/sites-available/maiwatch` :
+
+```nginx
+server {
+    listen 80;
+    server_name films.tondomaine.fr;
+
+    location / {
+        proxy_pass http://127.0.0.1:3100;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/maiwatch /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d films.tondomaine.fr
+```
+
+Aucun réglage de cookie à faire : il devient sécurisé tout seul dès que le site est servi en HTTPS (grâce à `X-Forwarded-Proto`).
+
+**5. Première visite** : ouvrir `https://films.tondomaine.fr`, créer le compte avec le code d'installation, coller la clé TMDB, choisir vos plateformes (Réglages).
+
+**6. Mettre à jour**
+
+```bash
+cd /home/debian/maiwatch && git pull && npm install --omit=dev && pm2 restart maiwatch
+```
+
+**7. Sauvegarder** le dossier `data/` : `app.db` (liste, notes, clés chiffrées) **et** `keys.json` (sans lui, les clés chiffrées sont illisibles). Exemple de tâche cron quotidienne (`sudo apt-get install -y sqlite3`) :
+
+```bash
+mkdir -p /home/debian/backups
+sqlite3 /home/debian/maiwatch/data/app.db ".backup '/home/debian/backups/maiwatch-$(date +%F).db'" && cp /home/debian/maiwatch/data/keys.json /home/debian/backups/maiwatch-keys-$(date +%F).json
+```
+
+Mot de passe oublié : `cd /home/debian/maiwatch && npm run set-password -- identifiant nouveau_mot_de_passe`.
 
 ## Limites connues
 
