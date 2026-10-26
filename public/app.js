@@ -261,11 +261,11 @@
   function platUrl(name, title) {
     var n = norm(name || ''), q = encodeURIComponent(title);
     if (/netflix/.test(n)) return 'https://www.netflix.com/search?q=' + q;
-    if (/prime video|amazon/.test(n)) return 'https://www.primevideo.com/search/?phrase=' + q;
+    if (/\bhbo\b|\bmax\b/.test(n)) return 'https://play.hbomax.com/search?q=' + q;
+    if (/prime video|amazon prime/.test(n)) return 'https://www.primevideo.com/search/?phrase=' + q;
     if (/disney/.test(n)) return 'https://www.disneyplus.com/search/' + q;
     if (/apple tv/.test(n)) return 'https://tv.apple.com/search?term=' + q;
     if (/canal/.test(n)) return 'https://www.canalplus.com/recherche/?q=' + q;
-    if (/\bmax\b/.test(n)) return 'https://play.max.com/search?q=' + q;
     if (/paramount/.test(n)) return 'https://www.paramountplus.com/search/?q=' + q;
     if (/youtube/.test(n)) return 'https://www.youtube.com/results?search_query=' + q;
     return null;
