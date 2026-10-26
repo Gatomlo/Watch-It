@@ -213,3 +213,7 @@ select.fld{appearance:auto}
 .who .av{flex:none;width:44px;height:44px;border-radius:22px;background:var(--accent);color:var(--ink);font-weight:800;font-size:18px;display:flex;align-items:center;justify-content:center}
 .mi .ct span.w{color:var(--warn);font-weight:600}
 .crow[aria-pressed="true"]{background:var(--surface);border-radius:10px}
+
+/* --- Bandeau d'installation --- */
+.inst{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 14px;border-radius:14px;background:var(--surface);border:1px solid var(--line)}
+.inst .btn{width:auto;height:44px;flex:none;padding:0 16px}

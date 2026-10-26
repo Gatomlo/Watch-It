@@ -14,6 +14,7 @@ Appli web (PWA) pour un foyer : liste « À voir » / « Vus », notes par profi
 - Suggestions : score = Σ poids (étoiles : (note − 3) × 1,5 ; ajouté +1 / +0,4 si ajouté par l'autre ; refusé −2) × proximité (recommandations TMDB + genres communs), filtrées sur les plateformes du foyer.
 - Synchro / hors-ligne : copie de `app.js` de Fée Lezcomptes (`merge3`, réessai 15 s, `dirty`). Listes d'objets fusionnées par `id` (chaîne).
 - Réglages : menu de rubriques (`ui.sset` = menu|plats|profils|lists|tmdb|ai|notif|theme|account), chacune une sous-page ; `PVL` = liste complète des plateformes TMDB de la région (ordre de popularité), `PV` = index par id. `POST /api/account/username` change l'identifiant.
+- Clés API (TMDB, IA, Trakt) : lecture seule une fois enregistrées ; modification (`ui.keyEdit`) et retrait (`ui.keyConfirm`, confirmation) explicites. Installation PWA : `beforeinstallprompt` (`deferredInstall`) → bandeau sur l'accueil (masquable, `maiwatch-install-hidden`) + Réglages > Installer l'application (mode d'emploi iPhone / Android / ordinateur).
 - Thème : `data-theme` sur `<html>` (dark|light|auto, localStorage `maiwatch-theme`), jetons CSS dans `styles.css`.
 - Filtres : type conservé d'un onglet à l'autre ; plateformes, genres et listes remis à zéro au changement d'onglet.
 - « Ce soir » : `ui.tb` = temps disponible (durée ou début/fin) → `minutes` envoyé à `/api/envies` (borne durée des films et des épisodes) ; l'heure de fin estimée est calculée côté client (`endNote`).
