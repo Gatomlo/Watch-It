@@ -77,7 +77,7 @@
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
     tab: 'me', sug: {}, sugOff: {}, mi: {}, sugVer: 0, epOpen: false, epSeason: null, epData: {}, epExp: {}, epErr: {}, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
     impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false,
-    sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
+    sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], who: 'all', tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
   };
   var booted = false, isAuthenticated = false, currentUsername = '';
 
@@ -344,15 +344,24 @@
     if (skip !== 'plat' && ui.plats.length) { var a = AV[it.id]; if (!a || !a.f.some(function (p) { return ui.plats.indexOf(p) >= 0; })) return false; }
     if (skip !== 'genre' && ui.genres.length && !(it.g || []).some(function (g) { return ui.genres.indexOf(g) >= 0; })) return false;
     if (skip !== 'col' && ui.cols.length) { var en = entry(it.id); if (!en || !(en.l || []).some(function (l) { return ui.cols.indexOf(l) >= 0; })) return false; }
+    if (skip !== 'who' && ui.who !== 'all') { var ew = entry(it.id); if (ew && ew.status === 'todo' && !whoOk(ew)) return false; }
     return true;
   }
+  function other() { return me === 'M' ? 'E' : 'M'; }
+  function whoOk(e) {
+    if (ui.who === 'me') return wants(e, me);
+    if (ui.who === 'other') return wants(e, other());
+    if (ui.who === 'both') return wants(e, 'M') && wants(e, 'E');
+    return true;
+  }
+  function whoLabel(w) { return w === 'me' ? 'Moi' : w === 'other' ? pname(other()) : w === 'both' ? 'Les deux' : 'Tous'; }
   function pool(scr) {
     scr = scr || ui.screen;
     if (scr === 'sug') { var s = ui.sug[ui.tab]; return s && s.items ? s.items.map(function (x) { return x.item; }) : []; }
     var st = scr === 'seen' ? 'seen' : 'todo';
     return S.list.filter(function (e) { return e.status === st; });
   }
-  function nFilters() { return famsOf(ui.plats).length + ui.genres.length + ui.cols.length; }
+  function nFilters() { return famsOf(ui.plats).length + ui.genres.length + ui.cols.length + (ui.who !== 'all' ? 1 : 0); }
 
   // ===================== Pièces d'interface =====================
   function poster(it, cls) {
@@ -436,6 +445,7 @@
     famsOf(ui.plats).forEach(function (f) { toks.push({ k: 'plat', v: f.ids.join(','), l: f.name }); });
     ui.genres.forEach(function (g) { toks.push({ k: 'genre', v: g, l: g }); });
     ui.cols.forEach(function (c) { toks.push({ k: 'col', v: c, l: colName(c) || 'Liste' }); });
+    if (ui.who !== 'all' && ui.screen !== 'sug' && ui.screen !== 'seen') toks.push({ k: 'who', v: 'all', l: 'Veut le voir : ' + whoLabel(ui.who) });
     var n = toks.length;
     var tk = '<div class="toks">' + toks.map(function (t) { return '<button class="tok" data-act="tog" data-k="' + t.k + '" data-v="' + esc(t.v) + '" aria-label="Retirer le filtre ' + esc(t.l) + '">' + esc(t.l) + I('close') + '</button>'; }).join('') + '</div>';
     var fb = '<button class="fbtn' + (n ? ' on' : '') + '" data-act="openfilter">' + I('filter') + 'Filtrer' + (n ? '<span class="cnt">' + n + '</span>' : '') + '</button>';
@@ -468,8 +478,9 @@
       cs.filter(function (c) { return passes(c, 'col'); }).forEach(function (c) { var en = entry(c.id); (en && en.l || []).forEach(function (l) { cc[l] = (cc[l] || 0) + 1; }); });
       colGroup = '<div class="fgroup"><h2>Listes</h2><div>' + S.collections.map(function (c) { return crow('col', c.id, c.name, cc[c.id] || 0, ui.cols.indexOf(c.id) >= 0); }).join('') + '</div></div>';
     }
+    var whoGroup = (ui.sheet.scr === 'sug' || ui.sheet.scr === 'seen') ? '' : '<div class="fgroup"><h2>Qui veut le voir</h2><div class="seg" role="group" aria-label="Qui veut le voir">' + ['all', 'me', 'other', 'both'].map(function (w) { return '<button class="chip' + (ui.who === w ? ' on' : '') + '" data-act="tog" data-k="who" data-v="' + w + '" aria-pressed="' + (ui.who === w) + '">' + esc(whoLabel(w)) + '</button>'; }).join('') + '</div></div>';
     return '<div class="scrim" data-scrim="1"><div class="sheet fsheet" role="dialog" aria-modal="true" aria-label="Filtres"><div class="fhead"><h3>Filtres</h3><button class="icon" data-act="closesheet" aria-label="Fermer">' + I('close') + '</button></div>' +
-      '<div class="fbody">' + colGroup +
+      '<div class="fbody">' + whoGroup + colGroup +
       '<div class="fgroup"><h2>Plateformes</h2><div>' + (plats || '<span class="help">Choisissez d’abord vos plateformes dans les réglages.</span>') + '</div></div>' +
       '<div class="fgroup"><h2>Genres</h2><label for="gq" style="position:absolute;left:-9999px">Chercher un genre</label><input id="gq" class="fsearch" type="search" autocomplete="off" placeholder="Chercher un genre" value="' + esc(ui.fq) + '"><div id="glist">' + genreList() + '</div></div></div>' +
       '<div style="display:flex;gap:10px"><button class="btn ghost" style="flex:none;width:auto" data-act="resetf"' + (nFilters() ? '' : ' disabled') + '>Effacer</button><button class="btn" data-act="closesheet">Voir ' + N + ' titre' + (N > 1 ? 's' : '') + '</button></div></div></div>';
@@ -1175,7 +1186,7 @@
   }
 
   var A = {
-    go: function (d) { ui.plats = []; ui.genres = []; ui.cols = []; go(d.to, false); },
+    go: function (d) { ui.plats = []; ui.genres = []; ui.cols = []; ui.who = 'all'; go(d.to, false); },
     push: function (d) { go(d.to, true); },
     sset: function (d) { ui.keyEdit = {}; ui.keyConfirm = null; ui.sset = d.v; if (d.v === 'plats') { loadProviders(); ui.pvq = ''; } if (d.v === 'notif') refreshPush(); render(); },
     back: function () { if (ui.screen === 'settings' && ui.sset !== 'menu') { ui.sset = 'menu'; ui.keyEdit = {}; ui.keyConfirm = null; render(); return; } var h = ui.hist.pop(); if (h) { ui.screen = h.screen; ui.detail = h.detail; ui.sheet = null; render(true); } else go('home'); },
@@ -1191,13 +1202,14 @@
     tog: function (d) {
       var k = d.k, v = d.v;
       if (k === 'type') ui.type = v;
+      else if (k === 'who') ui.who = v;
       else if (k === 'mp') { var mids = String(v).split(',').map(Number), mname = famsOf(mids)[0].name, added = toggleIds(S.settings.platforms, mids); save(); detectChanges(); toast(mname + (added ? ' ajoutée à vos plateformes' : ' retirée de vos plateformes') + ' (' + selFams().length + ' au total)'); }
       else if (k === 'plat') { toggleIds(ui.plats, String(v).split(',').map(Number)); }
       else { var arr = k === 'col' ? ui.cols : ui.genres, j = arr.indexOf(v); if (j >= 0) arr.splice(j, 1); else arr.push(v); }
       render(true);
     },
     openfilter: function () { ui.sheet = { type: 'filter', scr: ui.screen }; ui.fq = ''; ui.fexp = false; render(true); },
-    resetf: function () { ui.plats = []; ui.genres = []; ui.cols = []; ui.sugOff = {}; render(true); },
+    resetf: function () { ui.plats = []; ui.genres = []; ui.cols = []; ui.who = 'all'; ui.sugOff = {}; render(true); },
     fexp: function () { ui.fexp = !ui.fexp; render(true); },
     closesheet: function () { ui.sheet = null; render(true); },
     tab: function (d) { ui.tab = d.v; render(true); },
@@ -1282,7 +1294,7 @@
       if (dirty) { toast('Des modifications ne sont pas encore envoyées : attendez le retour du réseau.'); return; }
       apiFetch('/api/logout', { method: 'POST' }).finally(function () {
         isAuthenticated = false; S = null; baseState = null; baseVersion = null; try { localStorage.removeItem(STORE_KEY); } catch (e) {}
-        ui.screen = 'home'; ui.hist = []; ui.detail = null; ui.sug = {}; ui.env = null; ui.sr = null; ui.q = ''; ui.plats = []; ui.genres = []; ui.cols = []; ui.type = 'all'; ui.sheet = null; render();
+        ui.screen = 'home'; ui.hist = []; ui.detail = null; ui.sug = {}; ui.env = null; ui.sr = null; ui.q = ''; ui.plats = []; ui.genres = []; ui.cols = []; ui.who = 'all'; ui.type = 'all'; ui.sheet = null; render();
       });
     },
     tmdbsave: function () {
