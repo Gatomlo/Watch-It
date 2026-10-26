@@ -75,7 +75,7 @@
 
   var ui = {
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
-    tab: 'me', sug: {}, sugOff: {}, sugVer: 0, epOpen: false, epSeason: null, epData: {}, epExp: {}, epErr: {}, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
+    tab: 'me', sug: {}, sugOff: {}, mi: {}, sugVer: 0, epOpen: false, epSeason: null, epData: {}, epExp: {}, epErr: {}, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
     impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false,
     sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
   };
@@ -746,6 +746,15 @@
   function matchCur(m) { var v = matchMine(m); for (var i = 0; i < m.deck.length; i++) if (!v[m.deck[i].id]) return m.deck[i]; return null; }
   function matchResults(m) { var a = (m.votes && m.votes.M) || {}, b = (m.votes && m.votes.E) || {}; return m.deck.filter(function (c) { return a[c.id] === 1 && b[c.id] === 1; }); }
   function matchDone(m, u) { var v = (m.votes && m.votes[u]) || {}; return m.deck.every(function (c) { return v[c.id]; }); }
+  // Résumé et bande-annonce d'une carte : gardés dans le paquet ; pour une ancienne partie, récupérés à l'affichage.
+  function matchInfo(c) {
+    if (typeof c.ov === 'string') return { ov: c.ov, tr: c.tr || null };
+    var k = ui.mi[c.id];
+    if (!k) { ui.mi[c.id] = { ov: '', tr: null, pending: true }; api('/api/title/' + encodeURIComponent(c.id)).then(function (d) { ui.mi[c.id] = { ov: (d.ov || '').slice(0, 280), tr: d.trailer || null }; }).catch(function () { ui.mi[c.id] = { ov: '', tr: null }; }).finally(function () { if (ui.screen === 'envies' && ui.cs === 'match') safeRender(); }); return { ov: '', tr: null }; }
+    return k;
+  }
+  function platFull(id) { return '<span class="badge">' + logoOf(id) + esc(pnameOf(id)) + '</span>'; }
+
   function matchView() {
     var m = S.match, ot = other(me), h = '';
     if (ui.matchBusy) return skeletons(2);
@@ -755,12 +764,14 @@
     }
     var cur = matchCur(m), res = matchResults(m), voted = m.deck.filter(function (c) { return matchMine(m)[c.id]; }).length;
     if (cur) {
-      var av = (cur.f || []).filter(function (p) { return platsOn().indexOf(p) >= 0; });
+      var av = (cur.f || []).filter(function (p) { return platsOn().indexOf(p) >= 0; }), info = matchInfo(cur);
       h += '<span class="help" style="text-align:center">Titre ' + (voted + 1) + ' sur ' + m.deck.length + ' · vous votez en tant que ' + esc(pname(me)) + '</span>' +
         '<div class="mcard"><div class="mp" style="background:linear-gradient(160deg,hsl(' + hueOf(cur.t) + ' 38% 36%),hsl(' + hueOf(cur.t) + ' 24% 13%))">' + (cur.p ? '<img src="' + IMG + 'w342' + esc(cur.p) + '" alt="" onerror="this.remove()">' : '') + '<span>' + esc(cur.t.charAt(0)) + '</span></div>' +
         '<h2 style="font-family:var(--display);font-size:24px;font-weight:800;letter-spacing:-.01em;line-height:1.15;text-transform:none;color:var(--fg)">' + esc(cur.t) + '</h2><span class="meta">' + meta(cur) + (cur.g && cur.g.length ? ' · ' + esc(cur.g.slice(0, 2).join(', ')) : '') + '</span>' +
-        '<div class="badges" style="justify-content:center">' + av.map(platBadge).join('') + '</div>' +
-        '<div class="mact"><button class="btn ghost" data-act="matchvote" data-id="' + esc(cur.id) + '" data-v="-1">Pas envie</button><button class="btn" data-act="matchvote" data-id="' + esc(cur.id) + '" data-v="1">Envie</button></div></div>';
+        '<div class="badges" style="justify-content:center">' + (av.length ? av.map(platFull).join('') : '<span class="badge mut">Pas sur vos plateformes</span>') + '</div>' +
+        '<div class="mact"><button class="btn ghost" data-act="matchvote" data-id="' + esc(cur.id) + '" data-v="-1">Pas envie</button><button class="btn" data-act="matchvote" data-id="' + esc(cur.id) + '" data-v="1">Envie</button></div>' +
+        (info.tr ? '<button class="chip" style="height:44px;padding:0 16px" data-act="trailer" data-k="' + esc(info.tr) + '">' + I('play').replace('class="ico "', 'class="ico" style="width:14px;height:14px;fill:currentColor;stroke:none"') + 'Bande-annonce</button>' : '') +
+        (info.ov ? '<p class="syn" style="text-align:left;margin:0">' + esc(info.ov) + '</p>' : '') + '</div>';
     } else {
       h += '<div class="notice"><b>Vous avez tout balayé.</b> ' + (matchDone(m, ot) ? 'Partie terminée.' : 'En attente de ' + esc(pname(ot)) + ' (' + m.deck.filter(function (c) { return ((m.votes[ot] || {})[c.id]); }).length + ' sur ' + m.deck.length + ').') + '</div>';
     }
@@ -1319,7 +1330,11 @@
     matchstart: function () {
       ui.matchBusy = true; render(true);
       var plats = platsOn();
-      var card = function (it, f) { var o = lite(it); o.f = (f || []).filter(function (p) { return !plats.length || plats.indexOf(p) >= 0; }); return o; };
+      var card = function (it, f) {
+        var o = lite(it); o.f = (f || []).filter(function (p) { return !plats.length || plats.indexOf(p) >= 0; });
+        if (typeof it.ov === 'string') { o.ov = it.ov.slice(0, 280); if (it.trailer) o.tr = it.trailer; }
+        return o;
+      };
       Promise.all([api('/api/suggestions?tab=both&me=' + me).catch(function () { return []; }), api('/api/suggestions?tab=me&me=' + me).catch(function () { return []; })]).then(function (r) {
         var pool = {};
         S.list.forEach(function (e) { if (e.status === 'todo' && (!availKnown(e) || !plats.length || avail(e).length)) pool[e.id] = card(e, AV[e.id] && AV[e.id].f); });
@@ -1327,8 +1342,11 @@
         var ids = Object.keys(pool);
         if (ids.length < 2) { toast('Ajoutez d’abord quelques titres ou notez des films vus.'); return; }
         for (var i = ids.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = ids[i]; ids[i] = ids[j]; ids[j] = t; }
-        S.match = { id: Date.now().toString(36), deck: ids.slice(0, 12).map(function (k) { return pool[k]; }), votes: { M: {}, E: {} }, at: todayISO() };
-        save();
+        var deck = ids.slice(0, 12).map(function (k) { return pool[k]; });
+        return Promise.all(deck.map(function (c) {
+          if (typeof c.ov === 'string') return null;
+          return api('/api/title/' + encodeURIComponent(c.id)).then(function (d) { c.ov = (d.ov || '').slice(0, 280); if (d.trailer) c.tr = d.trailer; }).catch(function () { c.ov = ''; });
+        })).then(function () { S.match = { id: Date.now().toString(36), deck: deck, votes: { M: {}, E: {} }, at: todayISO() }; save(); });
       }).finally(function () { ui.matchBusy = false; render(true); });
     },
     matchvote: function (d) {
