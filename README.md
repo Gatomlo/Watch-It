@@ -12,7 +12,7 @@ Liste partagée de films et séries à voir, pour un foyer. Un seul compte, deux
 - **Thème** sombre, clair ou automatique.
 - **PWA** : installable, utilisable hors ligne (copie locale, synchronisation au retour du réseau), partage depuis Signal ou le navigateur vers l'appli (Android, appli installée).
 
-Mêmes principes techniques que Fée Lezcomptes : Node.js ≥ 22.5 (`node:sqlite`), Express, front en JS vanilla sans build.
+Stack : Node.js ≥ 22.5 (`node:sqlite`), Express, front en JS vanilla sans build.
 
 ## Démarrage
 
@@ -43,7 +43,7 @@ Variables d'environnement facultatives : `PORT` (3100), `DATA_DIR` (`./data`), `
 
 ## Déploiement sur un serveur (git + pm2 + nginx)
 
-Même méthode que Fée Lezcomptes. mAIwatch écoute sur le port **3100**, il peut donc tourner sur le même VPS (Fée Lezcomptes est sur 3000), avec son propre dossier et son propre nom de domaine.
+mAIwatch écoute sur le port **3100** (modifiable avec la variable `PORT`) ; il tourne dans son propre dossier, derrière son propre nom de domaine.
 
 **1. Prérequis** : Node.js ≥ 22.5 (`node -v`), pm2 (`sudo npm install -g pm2`), nginx + certbot (`sudo apt-get install -y nginx certbot python3-certbot-nginx`), et un enregistrement DNS (type A) `films.tondomaine.fr` vers l'IP du serveur.
 

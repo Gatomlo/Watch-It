@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { DatabaseSync } = require("node:sqlite");
 
-// Même convention que Fée Lezcomptes : DATA_DIR relatif = relatif à ce projet.
+// DATA_DIR relatif = relatif à ce projet (pas au dossier de lancement).
 const DATA_DIR = path.resolve(__dirname, "..", process.env.DATA_DIR || "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 

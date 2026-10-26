@@ -166,7 +166,7 @@ app.post("/api/account/password", requireAuth, (req, res) => {
   });
 });
 
-// --- État partagé (liste, notes, profils, plateformes), versionné comme dans Fée Lezcomptes ---
+// --- État partagé (liste, notes, profils, plateformes), versionné ---
 
 app.get("/api/state", requireAuth, (req, res) => {
   res.set("Cache-Control", "no-store");

@@ -1,9 +1,9 @@
 # mAIwatch — films et séries à voir
 
-Appli web (PWA) pour un foyer : liste « À voir » / « Vus », notes par profil, suggestions, envies en langage naturel (IA facultative), import. Même stack que Fée Lezcomptes (Node ≥ 22.5 `node:sqlite`, Express, JS vanilla sans build) ; port 3100, base `data/app.db`.
+Appli web (PWA) pour un foyer : liste « À voir » / « Vus », notes par profil, suggestions, envies en langage naturel (IA facultative), import. Stack : Node ≥ 22.5 (`node:sqlite`), Express, JS vanilla sans build ; port 3100, base `data/app.db`.
 
 ## Fichiers clés
-- `src/server.js` : auth (comme Fée Lezcomptes) + `POST /api/setup` (création du compte à la première visite, code d'installation affiché dans la console), `/api/tmdb-key`, `GET/PUT /api/state` (version `X-State-Version`, `X-Base-Version` → 409), `/api/search|title|availability|providers|suggestions|envies|import`, `/api/ai` (clé IA), statiques.
+- `src/server.js` : auth + `POST /api/setup` (création du compte à la première visite, code d'installation affiché dans la console), `/api/tmdb-key`, `GET/PUT /api/state` (version `X-State-Version`, `X-Base-Version` → 409), `/api/search|title|availability|providers|suggestions|envies|import`, `/api/ai` (clé IA), statiques.
 - `src/db.js` : SQLite (`users`, `app_state` JSON + version, `sessions`, `secrets`, `cache`). `src/keys.js` : clés internes auto-générées (`data/keys.json`). `src/cryptoBox.js` : AES-256-GCM pour les clés API (TMDB, IA). `src/tmdb.js` : API TMDB + cache. `src/ai.js` : Claude / Gemini / Mistral. `src/engine.js` : suggestions, envies, « Bientôt ». `src/importers.js` : Letterboxd (RSS) et Trakt. `src/push.js` : Web Push (clés VAPID en base, `watch()` toutes les 6 h).
 - `public/app.js` (tout le front : état, synchro, rendu, événements), `styles.css`, `sw.js`, `manifest.json` (partage + raccourcis), `logo.svg` (+ PNG).
 
@@ -12,7 +12,7 @@ Appli web (PWA) pour un foyer : liste « À voir » / « Vus », notes par profi
 - Entrée de liste : `{ id:'movie:123'|'tv:456', ty:'film'|'serie', t, y, p(affiche), g[noms de genres], len, by:'M'|'E', at, status:'todo'|'seen', r:{M,E: 1..5 étoiles}, prog:{s,e} (séries), l:[ids de collections], note, av:{f[]}, alert }`. Le profil actif de l'appareil (`me`) reste dans localStorage, hors état synchronisé.
 - Disponibilité (`AV`) : récupérée à l'ouverture (cache 6 h), jamais synchronisée ; `detectChanges` compare à `e.av` pour les alertes « N'est plus sur… ».
 - Suggestions : score = Σ poids (étoiles : (note − 3) × 1,5 ; ajouté +1 / +0,4 si ajouté par l'autre ; refusé −2) × proximité (recommandations TMDB + genres communs), filtrées sur les plateformes du foyer.
-- Synchro / hors-ligne : copie de `app.js` de Fée Lezcomptes (`merge3`, réessai 15 s, `dirty`). Listes d'objets fusionnées par `id` (chaîne).
+- Synchro / hors-ligne : état gardé dans localStorage puis envoyé au serveur ; en cas de 409, fusion à trois (`merge3`, réessai 15 s, `dirty`). Listes d'objets fusionnées par `id` (chaîne).
 - Réglages : menu de rubriques (`ui.sset` = menu|plats|profils|lists|tmdb|ai|notif|theme|account), chacune une sous-page ; `PVL` = liste complète des plateformes TMDB de la région (ordre de popularité), `PV` = index par id. `POST /api/account/username` change l'identifiant.
 - Clés API (TMDB, IA, Trakt) : lecture seule une fois enregistrées ; modification (`ui.keyEdit`) et retrait (`ui.keyConfirm`, confirmation) explicites. Installation PWA : `beforeinstallprompt` (`deferredInstall`) → bandeau sur l'accueil (masquable, `maiwatch-install-hidden`) + Réglages > Installer l'application (mode d'emploi iPhone / Android / ordinateur).
 - Plateformes : TMDB liste une même plateforme sous plusieurs ids (« Amazon Prime Video » ×2, « … with Ads », « HBO Max » / « Max »). `famKey(nom)` regroupe ces variantes ; choisir une plateforme (réglages ou filtre) ajoute tous les ids de sa famille, et `expandSelected()` complète une sélection existante au chargement de `PVL`. Bande-annonce : feuille `trailer` avec iframe `youtube-nocookie.com/embed/…` (la couche n'est pas re-rendue tant qu'elle est ouverte, pour ne pas relancer la vidéo).

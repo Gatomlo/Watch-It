@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  // Chemin de montage (même principe que Fée Lezcomptes) : déduit de l'URL du script.
+  // Chemin de montage : déduit de l'URL du script.
   var BASE = (function () {
     try {
       var u = document.currentScript && document.currentScript.src;
@@ -136,7 +136,7 @@
   }
 
   // ===================== Synchronisation et hors-ligne =====================
-  // Même principe que Fée Lezcomptes : l'état vit d'abord sur l'appareil (localStorage) puis
+  // L'état vit d'abord sur l'appareil (localStorage) puis
   // part au serveur ; en cas de 409, fusion à trois (base / local / serveur) puis renvoi.
   var STORE_KEY = 'maiwatch-data';
   var baseState = null, baseVersion = null, dirty = false, online = true, syncing = false, syncAgain = false, retryTimer = null, renderDeferred = false;
