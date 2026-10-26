@@ -9,7 +9,7 @@ const { encrypt, decrypt } = require("./cryptoBox");
 
 // Modèle utilisé : celui choisi dans l'appli (Réglages > Assistant d'envies), sinon la variable
 // AI_MODEL_<FOURNISSEUR>, sinon la valeur par défaut. Les fournisseurs retirent parfois d'anciens modèles.
-const DEFAULTS = { claude: "claude-haiku-5-5", gemini: "gemini-3.8-flash", mistral: "mistral-small-latest" };
+const DEFAULTS = { claude: "claude-haiku-5-5", gemini: "gemini-3.5-flash", mistral: "mistral-small-latest" };
 function modelOf(provider) {
   return store.getSecret("ai_model_" + provider) || process.env["AI_MODEL_" + provider.toUpperCase()] || DEFAULTS[provider];
 }
@@ -174,8 +174,17 @@ async function listModels() {
   let ids = [];
   if (c.provider === "gemini") {
     const base = process.env.AI_BASE_GEMINI || "https://generativelanguage.googleapis.com/v1beta/models";
-    const j = await get(base + "?pageSize=200", { "x-goog-api-key": c.key });
-    ids = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).indexOf("generateContent") >= 0).map((m) => String(m.name).replace(/^models\//, "")).filter((n) => /^gemini-/.test(n));
+    // La liste est paginée : on suit les pages (jusqu'à 6) pour ne manquer aucun modèle récent.
+    let models = [], token = "";
+    for (let i = 0; i < 6; i++) {
+      const j = await get(base + "?pageSize=1000" + (token ? "&pageToken=" + encodeURIComponent(token) : ""), { "x-goog-api-key": c.key });
+      models = models.concat(j.models || []);
+      token = j.nextPageToken || "";
+      if (!token) break;
+    }
+    ids = models.filter((m) => (m.supportedGenerationMethods || []).indexOf("generateContent") >= 0)
+      .map((m) => String(m.name).replace(/^models\//, ""))
+      .filter((n) => /^gemini-/.test(n) && !/embedding|imagen|veo|tts|aqa|native-audio|live|robotics|computer-use|image/i.test(n));
   } else if (c.provider === "claude") {
     const j = await get(PROVIDERS.claude.url().replace(/\/messages$/, "/models") + "?limit=100", { "x-api-key": c.key, "anthropic-version": "2023-06-01" });
     ids = (j.data || []).map((m) => m.id);
@@ -183,7 +192,7 @@ async function listModels() {
     const j = await get(PROVIDERS.mistral.url().replace(/\/chat\/completions$/, "/models"), { Authorization: "Bearer " + c.key });
     ids = (j.data || []).filter((m) => !m.capabilities || m.capabilities.completion_chat).map((m) => m.id);
   }
-  return [...new Set(ids)].sort().reverse().slice(0, 40);
+  return [...new Set(ids)].sort((a, b) => b.localeCompare(a, undefined, { numeric: true })).slice(0, 120);
 }
 
 module.exports = { PROVIDERS, DEFAULTS, status, save, clear, json, test, config, listModels };
