@@ -58,7 +58,7 @@
   var S = null;
   var me = 'M';             // profil de cet appareil (propre à l'appareil, non synchronisé)
   try { me = localStorage.getItem('maiwatch-me') === 'E' ? 'E' : 'M'; } catch (e) {}
-  var CFG = { tmdb: true, tmdbKey: { hasKey: true, last4: null, source: 'app' }, region: 'BE', ai: { provider: 'claude', hasKey: false, last4: null, tested: false } };
+  var CFG = { tmdb: true, tmdbKey: { hasKey: true, last4: null, source: 'app' }, region: 'BE', ai: { provider: 'claude', hasKey: false, last4: null, tested: false }, streaming: { hasKey: false, last4: null, mode: 'direct' } };
   var AV = {};              // disponibilité des titres de la liste : id -> { f[], r[], b[], trailer }
   var AV_AT = 0;
   var PV = {}, PVL = [];    // plateformes connues : id -> { id, name, logo } ; PVL = même liste, dans l'ordre de popularité
@@ -77,7 +77,7 @@
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
     tab: 'me', sug: {}, sugOff: {}, mi: {}, sugVer: 0, epOpen: false, epSeason: null, epData: {}, epExp: {}, epErr: {}, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
     impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false,
-    sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], who: 'all', tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
+    sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], who: 'all', lk: {}, saMode: null, saMsg: '', saBusy: false, tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
   };
   var booted = false, isAuthenticated = false, currentUsername = '';
 
@@ -257,24 +257,49 @@
   window.addEventListener('offline', function () { setOnline(false); });
 
   // ===================== Plateformes et disponibilité =====================
-  // Lien de recherche du titre sur le site d'une plateforme (TMDB ne fournit pas de lien direct par titre).
-  function platUrl(name, title) {
-    var n = norm(name || ''), q = encodeURIComponent(title);
-    if (/netflix/.test(n)) return 'https://www.netflix.com/search?q=' + q;
-    if (/\bhbo\b|\bmax\b/.test(n)) return 'https://play.hbomax.com/search?q=' + q;
-    if (/prime video|amazon prime/.test(n)) return 'https://www.primevideo.com/search/?phrase=' + q;
-    if (/disney/.test(n)) return 'https://www.disneyplus.com/search/' + q;
-    if (/apple tv/.test(n)) return 'https://tv.apple.com/search?term=' + q;
-    if (/canal/.test(n)) return 'https://www.canalplus.com/recherche/?q=' + q;
-    if (/paramount/.test(n)) return 'https://www.paramountplus.com/search/?q=' + q;
-    if (/youtube/.test(n)) return 'https://www.youtube.com/results?search_query=' + q;
-    return null;
+  // Marque d'une plateforme d'après son nom (TMDB et Streaming Availability nomment un peu différemment).
+  function brandOf(name) {
+    var n = norm(name || '');
+    if (/netflix/.test(n)) return 'netflix';
+    if (/\bhbo\b|\bmax\b/.test(n)) return 'max';
+    if (/prime video|amazon prime/.test(n)) return 'prime';
+    if (/disney/.test(n)) return 'disney';
+    if (/apple tv/.test(n)) return 'apple';
+    if (/canal/.test(n)) return 'canal';
+    if (/paramount/.test(n)) return 'paramount';
+    if (/youtube/.test(n)) return 'youtube';
+    return n;
   }
-  // Meilleure cible à partager : plateforme du foyer, sinon une autre, sinon la page TMDB / JustWatch.
-  function shareTarget(d) {
-    var f = d.av.f, mine = f.filter(function (p) { return platsOn().indexOf(p) >= 0; }), order = mine.concat(f.filter(function (p) { return mine.indexOf(p) < 0; }));
-    for (var i = 0; i < order.length; i++) { var u = platUrl(pnameOf(order[i]), d.t); if (u) return { name: pnameOf(order[i]), url: u }; }
-    return d.av.link ? { name: '', url: d.av.link } : null;
+  function saOn() { return !!(CFG.streaming && CFG.streaming.hasKey); }
+  // Liens à afficher / partager : choix du foyer (Réglages > Partage), TMDB / JustWatch par défaut.
+  function linkOpt(k) { var l = S.settings.links; return l && l[k] != null ? !!l[k] : true; }
+  function tmdbLink(d) {
+    if (!d || !d.av || !d.av.link) return null;
+    try { var u = new URL(d.av.link); u.searchParams.set('language', 'fr-FR'); return u.toString(); } catch (e) { return d.av.link; }
+  }
+  // Lien direct du titre chez une plateforme (Streaming Availability) : d'abord celles du foyer.
+  function platLink(d) {
+    var ls = ui.lk[d.id]; if (!saOn() || !Array.isArray(ls) || !ls.length) return null;
+    var mine = {}; platsOn().forEach(function (p) { mine[brandOf(pnameOf(p))] = 1; });
+    var order = ls.filter(function (l) { return l.type === 'subscription' || l.type === 'free' || l.type === 'addon'; });
+    var hit = order.filter(function (l) { return mine[brandOf(l.name)]; })[0] || order[0] || ls[0];
+    return hit ? { name: hit.name, url: hit.link } : null;
+  }
+  function linkFor(d, providerId) {
+    var ls = ui.lk[d.id]; if (!saOn() || !linkOpt('plat') || !Array.isArray(ls)) return null;
+    var b = brandOf(pnameOf(providerId)), hit = ls.filter(function (l) { return brandOf(l.name) === b; })[0];
+    return hit ? hit.link : null;
+  }
+  function shareLinks(d) {
+    var out = [], pl = linkOpt('plat') ? platLink(d) : null, tl = linkOpt('tmdb') || !pl ? tmdbLink(d) : null;
+    if (pl) out.push({ label: pl.name, url: pl.url });
+    if (tl) out.push({ label: 'TMDB / JustWatch', url: tl });
+    return out;
+  }
+  function loadLinks(id) {
+    if (!saOn() || !linkOpt('plat') || ui.lk[id] !== undefined) return;
+    ui.lk[id] = 'loading';
+    api('/api/title/' + encodeURIComponent(id) + '/links').then(function (l) { ui.lk[id] = l; }).catch(function () { ui.lk[id] = 'err'; }).finally(function () { if (ui.detail === id && ui.screen === 'detail') safeRender(); });
   }
   function logoOf(id) { var p = PV[id]; return p && p.logo ? '<img class="pl" src="' + IMG + 'w45' + esc(p.logo) + '" alt="" loading="lazy">' : '<span class="dot" style="background:var(--muted)"></span>'; }
   function pnameOf(id) { return PV[id] ? PV[id].name : 'Plateforme ' + id; }
@@ -587,14 +612,15 @@
       var f = d.av.f, shown = {};
       f.forEach(function (p) {
         var on = platsOn().indexOf(p) >= 0; shown[p] = 1;
-        where += '<div class="card' + (on ? '' : ' q') + '">' + logoOf(p) + '<span class="ct"><b>' + esc(pnameOf(p)) + '</b><span>Inclus dans l’abonnement</span></span><span class="st ' + (on ? 'ok' : 'no') + '">' + (on ? 'Dans votre abo' : 'Pas dans vos abos') + '</span>' + (platUrl(pnameOf(p), d.t) ? '<a class="icon" href="' + esc(platUrl(pnameOf(p), d.t)) + '" target="_blank" rel="noopener" aria-label="Ouvrir ' + esc(pnameOf(p)) + '">' + I('play') + '</a>' : '') + '</div>';
+        where += '<div class="card' + (on ? '' : ' q') + '">' + logoOf(p) + '<span class="ct"><b>' + esc(pnameOf(p)) + '</b><span>Inclus dans l’abonnement</span></span><span class="st ' + (on ? 'ok' : 'no') + '">' + (on ? 'Dans votre abo' : 'Pas dans vos abos') + '</span>' + (linkFor(d, p) ? '<a class="icon" href="' + esc(linkFor(d, p)) + '" target="_blank" rel="noopener" aria-label="Ouvrir sur ' + esc(pnameOf(p)) + '">' + I('play') + '</a>' : '') + '</div>';
       });
       var extra = [];
       d.avNames.r.forEach(function (n) { extra.push(n + ' (location)'); });
       d.avNames.b.forEach(function (n) { if (d.avNames.r.indexOf(n) < 0) extra.push(n + ' (achat)'); });
       if (extra.length) where += '<div class="card q"><span class="ct"><b>Location ou achat</b><span>' + esc(extra.slice(0, 5).join(' · ')) + '</span></span></div>';
       if (!where) where = '<div class="empty">Pas disponible en streaming dans votre région pour l’instant.</div>';
-      if (shareTarget(d) || d.av.link) where += '<button class="btn ghost" data-act="share" data-id="' + esc(id) + '">' + I('share') + ' Partager la fiche</button>';
+      if (shareLinks(d).length) where += '<button class="btn ghost" data-act="share" data-id="' + esc(id) + '">' + I('share') + ' Partager la fiche</button>';
+      if (saOn() && linkOpt('plat') && ui.lk[id] === 'loading') where += '<span class="help">Recherche du lien direct…</span>';
     } else where = skeletons(1);
     var rates = '';
     if (e && e.status === 'seen') {
@@ -873,6 +899,7 @@
   function setMenu() {
     var T = CFG.tmdbKey || {}, A = CFG.ai, np = selFams().length;
     var plSub = np ? np + ' choisie' + (np > 1 ? 's' : '') + ' : ' + esc(selFams().slice(0, 3).map(function (f) { return f.name; }).join(', ') + (np > 3 ? '…' : '')) : '<span class="w">Aucune choisie</span>';
+    var shSub = [linkOpt('tmdb') ? 'TMDB / JustWatch' : '', linkOpt('plat') ? (saOn() ? 'Plateforme' : '') : ''].filter(Boolean).join(' + ') || 'Aucun lien';
     var tmSub = T.hasKey ? 'Clé enregistrée' : '<span class="w">À configurer : sans clé, rien ne s’affiche</span>';
     var aiSub = A.hasKey ? esc(PROVS[A.provider]) + (A.tested ? ' · testé' : ' · non testé') : 'Facultatif · non configuré';
     var P = ui.push, pSub = P.st === 'on' ? 'Activées sur cet appareil' : (P.st === 'denied' ? 'Bloquées par le navigateur' : (P.st === 'unsupported' ? 'Indisponibles ici' : 'Désactivées'));
@@ -880,7 +907,7 @@
       '<div class="who"><span class="av">' + esc((currentUsername || '?').charAt(0).toUpperCase()) + '</span><div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span class="help">Connecté en tant que</span><b style="font-size:16px;overflow-wrap:anywhere">' + esc(currentUsername || 'identifiant inconnu') + '</b></div></div>' +
       '<div class="group"><h2>Cet appareil est utilisé par</h2><div class="seg">' + ['M', 'E'].map(function (u) { return '<button class="chip' + (me === u ? ' on' : '') + '" data-act="profile" data-u="' + u + '" aria-pressed="' + (me === u) + '"><span class="ava ' + u + '">' + esc(initial(u)) + '</span>' + esc(pname(u)) + '</button>'; }).join('') + '</div></div>' +
       '<div class="group"><h2>Notre foyer</h2><div class="menu">' + mrow('plats', 'play', 'Plateformes de streaming', plSub) + mrow('profils', 'checkc', 'Profils', esc(pname('M') + ' · ' + pname('E'))) + mrow('lists', 'list', 'Listes thématiques', S.collections.length + ' liste' + (S.collections.length > 1 ? 's' : '')) + '</div></div>' +
-      '<div class="group"><h2>Services</h2><div class="menu">' + mrow('tmdb', 'search', 'Films et séries (TMDB)', tmSub) + mrow('ai', 'spark', 'Assistant d’envies', aiSub) + mrow('notif', 'dice', 'Notifications', pSub) + '</div></div>' +
+      '<div class="group"><h2>Services</h2><div class="menu">' + mrow('tmdb', 'search', 'Films et séries (TMDB)', tmSub) + mrow('share', 'share', 'Partage des fiches', shSub) + mrow('ai', 'spark', 'Assistant d’envies', aiSub) + mrow('notif', 'dice', 'Notifications', pSub) + '</div></div>' +
       '<div class="group"><h2>Données</h2><div class="menu"><button class="mi" data-act="push" data-to="import">' + I('dl').replace('class="ico "', 'class="ico" style="stroke:var(--accent)"') + '<span class="ct"><b>Importer nos films et séries vus</b><span>Liste, CSV, Letterboxd, Trakt, Netflix</span></span>' + I('chev') + '</button>' +
       '<button class="mi" data-act="export">' + I('ul') + '<span class="ct"><b>Exporter la liste</b><span>Fichier CSV</span></span></button></div></div>' +
       '<div class="group"><h2>Application</h2><div class="menu">' + mrow('install', 'dl', 'Installer l’application', isStandalone() ? 'Déjà installée' : (deferredInstall ? 'Disponible : touchez pour installer' : 'Mode d’emploi')) + mrow('theme', 'gear', 'Apparence', THEME === 'light' ? 'Clair' : (THEME === 'auto' ? 'Automatique' : 'Sombre')) + mrow('account', 'out', 'Compte', 'Identifiant, mot de passe, déconnexion') + '</div></div>' +
@@ -928,6 +955,27 @@
       '<div class="sec"><h2>Clé TMDB</h2>' + (T.hasKey ? '<span class="st ok">Clé enregistrée</span>' : '<span class="st bad">Aucune clé</span>') + '</div>' +
       (T.source === 'env' ? '<span class="help">Clé fournie par le serveur (variable d’environnement).</span>' : '') + tmdbForm(false) +
       '<p class="cred">Films, séries, affiches et bandes-annonces : TMDB. Ce produit utilise l’API TMDB mais n’est ni approuvé ni certifié par TMDB. Informations « où regarder » : JustWatch, via TMDB.</p>';
+  }
+
+  function setShare() {
+    var K = CFG.streaming || {}, editing = !K.hasKey || ui.keyEdit.sa, m = ui.saMode || K.mode || 'direct';
+    function opt(k, title, sub, off) { var on = linkOpt(k) && !off; return '<button class="card" style="text-align:left;width:100%"' + (off ? ' disabled' : '') + ' data-act="linkopt" data-k="' + k + '" aria-pressed="' + on + '"><span class="ct"><b>' + title + '</b><span>' + sub + '</span></span><span class="st ' + (on ? 'ok' : 'no') + '">' + (on ? 'Activé' : 'Désactivé') + '</span></button>'; }
+    var keyBlock;
+    if (!editing) {
+      keyBlock = '<div class="card"><span class="ct"><b>Streaming Availability</b><span>Clé enregistrée (…' + esc(K.last4 || '') + ') · ' + (K.mode === 'rapid' ? 'RapidAPI' : 'accès direct') + '</span></span><span class="st ok">Active</span></div>' +
+        '<div style="display:flex;gap:10px"><button class="btn ghost" style="height:44px" data-act="keyedit" data-v="sa">Modifier</button><button class="btn ghost" style="height:44px" data-act="keyask" data-v="sa">Retirer</button></div>' +
+        keyConfirmBox('sa', 'Les fiches ne proposeront plus le lien direct vers la plateforme.', 'saclear');
+    } else {
+      keyBlock = '<span class="help" style="line-height:1.5">Facultatif. <b style="color:var(--fg)">Streaming Availability</b> donne le lien direct du titre chez Netflix, Prime, Disney+, Max… Compte gratuit sur <a href="https://developers.movieofthenight.com/" target="_blank" rel="noopener" style="color:var(--fg)">developers.movieofthenight.com</a> (ou via <a href="https://rapidapi.com/movie-of-the-night-movie-of-the-night-default/api/streaming-availability" target="_blank" rel="noopener" style="color:var(--fg)">RapidAPI</a>). Vérifiez le quota gratuit sur leur page tarifs.</span>' +
+        '<div class="seg" role="group" aria-label="Origine de la clé">' + [['direct', 'Accès direct'], ['rapid', 'RapidAPI']].map(function (x) { return '<button class="chip' + (m === x[0] ? ' on' : '') + '" data-act="samode" data-v="' + x[0] + '" aria-pressed="' + (m === x[0]) + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+        '<label for="sakey" style="position:absolute;left:-9999px">Clé Streaming Availability</label><input id="sakey" class="kinput" type="password" autocomplete="off" placeholder="Collez la clé API">' +
+        '<div style="display:flex;gap:10px"><button class="btn ghost" style="height:44px" data-act="sasave"' + (ui.saBusy ? ' disabled' : '') + '>' + (ui.saBusy ? 'Vérification…' : 'Enregistrer et vérifier') + '</button>' + (K.hasKey ? '<button class="btn ghost" style="height:44px" data-act="keycancel">Annuler</button>' : '') + '</div>';
+    }
+    return subHeader('Partage des fiches') +
+      '<div class="group"><h2>Liens à afficher et à partager</h2>' + opt('tmdb', 'Fiche TMDB / JustWatch', 'Page du titre avec les plateformes de votre pays, en français. Fonctionne toujours.') +
+      opt('plat', 'Fiche de la plateforme', saOn() ? 'Lien direct vers le titre chez Netflix, Prime, etc.' : 'Demande la clé Streaming Availability ci-dessous.', !saOn()) + '</div>' +
+      '<div class="group"><h2>Lien direct (facultatif)</h2>' + keyBlock + (ui.saMsg ? '<div class="notice" role="status">' + esc(ui.saMsg) + '</div>' : '') +
+      '<span class="help">La clé reste sur votre serveur, chiffrée. Chaque fiche ouverte envoie à ce service l’identifiant TMDB du titre et votre pays ; le résultat est gardé 24 h.</span></div>';
   }
 
   function setAi() {
@@ -979,6 +1027,7 @@
       case 'lists': return setLists();
       case 'tmdb': return setTmdb();
       case 'ai': return setAi();
+      case 'share': return setShare();
       case 'notif': return subHeader('Notifications') + pushSection();
       case 'theme': return setTheme();
       case 'install': return setInstall();
@@ -1135,7 +1184,7 @@
     render();
     api('/api/title/' + encodeURIComponent(id)).then(function (d) {
       if (ui.detail !== id) return;
-      ui.dd = d; know(lite(d));
+      ui.dd = d; know(lite(d)); loadLinks(id);
       var e = entry(id);
       if (e) { // complète la fiche gardée dans la liste (durée, genres…) sans bruit
         var ch = false;
@@ -1213,10 +1262,11 @@
     open: function (d) { openDetail(d.id); },
     share: function () {
       var d = ui.dd; if (!d || !d.av) return;
-      var t = shareTarget(d); if (!t) return;
-      var txt = d.t + (d.y ? ' (' + d.y + ')' : '') + (t.name ? ' — à voir sur ' + t.name : ''), data = { title: d.t, text: txt, url: t.url };
-      if (navigator.share) { navigator.share(data).catch(function () {}); return; }
-      var all = txt + '\n' + t.url;
+      if (ui.lk[d.id] === 'loading') { toast('Lien direct en cours de recherche, réessayez dans un instant.'); return; }
+      var ls = shareLinks(d); if (!ls.length) return;
+      var head = d.t + (d.y ? ' (' + d.y + ')' : ''), body = ls.map(function (l) { return l.label + ' : ' + l.url; }).join('\n');
+      if (navigator.share) { navigator.share(ls.length === 1 ? { title: d.t, text: head, url: ls[0].url } : { title: d.t, text: head + '\n' + body }).catch(function () {}); return; }
+      var all = head + '\n' + body;
       if (navigator.clipboard) navigator.clipboard.writeText(all).then(function () { toast('Lien copié'); }, function () { toast(all); }); else toast(all);
     },
     want: function (d) {
@@ -1363,6 +1413,20 @@
       if (ev.userChoice) ev.userChoice.then(function (c) { deferredInstall = null; if (c && c.outcome === 'dismissed') toast('Installation annulée. Vous pourrez la relancer depuis les réglages.'); safeRender(); });
     },
     installhide: function () { try { localStorage.setItem('maiwatch-install-hidden', '1'); } catch (e) {} render(true); },
+    linkopt: function (d) {
+      var l = S.settings.links = Object.assign({ tmdb: true, plat: true }, S.settings.links || {}), other = d.k === 'tmdb' ? 'plat' : 'tmdb';
+      if (l[d.k] && !l[other] ) { toast('Gardez au moins un lien activé.'); return; }
+      if (l[d.k] && other === 'plat' && !saOn()) { toast('Gardez au moins un lien activé.'); return; }
+      l[d.k] = !l[d.k]; save(); render(true);
+    },
+    samode: function (d) { ui.saMode = d.v; render(true); },
+    sasave: function () {
+      var inp = document.getElementById('sakey'), key = inp ? inp.value.trim() : '';
+      if (!key) { ui.saMsg = 'Collez d’abord la clé.'; render(true); return; }
+      ui.saBusy = true; ui.saMsg = ''; render(true);
+      api('/api/streaming-key', { method: 'PUT', body: { key: key, mode: ui.saMode || (CFG.streaming && CFG.streaming.mode) || 'direct' } }).then(function (st) { CFG.streaming = st; ui.keyEdit.sa = false; ui.saMode = null; ui.lk = {}; ui.saMsg = 'Clé vérifiée et enregistrée.'; }).catch(function (e) { ui.saMsg = e.message; }).finally(function () { ui.saBusy = false; render(true); });
+    },
+    saclear: function () { api('/api/streaming-key', { method: 'DELETE' }).then(function (st) { CFG.streaming = st; ui.lk = {}; ui.saMsg = 'Clé retirée.'; ui.keyConfirm = null; ui.keyEdit = {}; render(true); }).catch(function (e) { toast(e.message); }); },
     keyedit: function (d) { ui.keyEdit[d.v] = true; ui.keyConfirm = null; ui.tmdbMsg = ''; ui.aiMsg = ''; render(true); },
     keyask: function (d) { ui.keyConfirm = d.v; render(true); },
     keycancel: function () { ui.aiDraftModel = null; ui.aiModels = null; ui.keyEdit = {}; ui.keyConfirm = null; ui.tmdbMsg = ''; ui.aiMsg = ''; render(true); },

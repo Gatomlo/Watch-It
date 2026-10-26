@@ -14,6 +14,7 @@ const db = require("./db");
 const SqliteSessionStore = require("./sessionStore");
 const tmdb = require("./tmdb");
 const ai = require("./ai");
+const streaming = require("./streaming");
 const engine = require("./engine");
 const importers = require("./importers");
 const push = require("./push");
@@ -193,7 +194,7 @@ app.put("/api/state", requireAuth, (req, res) => {
 // --- Configuration, TMDB ---
 
 app.get("/api/config", requireAuth, (req, res) => {
-  res.json({ tmdb: tmdb.configured(), tmdbKey: tmdb.status(), region: db.getState().settings.region || "BE", ai: ai.status() });
+  res.json({ tmdb: tmdb.configured(), tmdbKey: tmdb.status(), region: db.getState().settings.region || "BE", ai: ai.status(), streaming: streaming.status() });
 });
 
 // Clé TMDB : saisie dans l'appli, vérifiée auprès de TMDB puis chiffrée en base.
@@ -224,6 +225,22 @@ app.get("/api/search", requireAuth, wrap(async (req, res) => {
 
 app.get("/api/title/:id/season/:n", requireAuth, wrap(async (req, res) => {
   res.json(await tmdb.season(req.params.id, req.params.n));
+}));
+
+// Streaming Availability (facultatif) : lien direct du titre chez chaque plateforme.
+app.get("/api/streaming-key", requireAuth, (req, res) => res.json(streaming.status()));
+app.put("/api/streaming-key", requireAuth, wrap(async (req, res) => {
+  const key = String((req.body && req.body.key) || "").trim();
+  const mode = req.body && req.body.mode === "rapid" ? "rapid" : "direct";
+  if (key.length < 16 || key.length > 300 || /\s/.test(key)) return res.status(400).json({ error: "Collez la clé Streaming Availability en entier." });
+  const r = await streaming.check(key, mode);
+  if (!r.ok) return res.status(400).json({ error: r.error });
+  streaming.save(key, mode);
+  res.json(streaming.status());
+}));
+app.delete("/api/streaming-key", requireAuth, (req, res) => { streaming.clear(); res.json(streaming.status()); });
+app.get("/api/title/:id/links", requireAuth, wrap(async (req, res) => {
+  res.json(await streaming.links(req.params.id, engine.region(db.getState())));
 }));
 
 app.get("/api/title/:id", requireAuth, wrap(async (req, res) => {
