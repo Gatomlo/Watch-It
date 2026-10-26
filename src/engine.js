@@ -97,14 +97,14 @@ async function suggestions(state, tab, me) {
     cands.push({ c: v.c, s: Math.min.apply(null, all.map((x) => x.s)), parts: all.reduce((a, x) => a.concat(x.parts), []) });
   });
   cands.sort((a, b) => b.s - a.s);
-  const checked = await pmap(cands.slice(0, 30), 6, async (x) => {
+  const checked = await pmap(cands.slice(0, 40), 6, async (x) => {
     const d = await tmdb.details(x.c.id, reg);
     return { d, x };
   });
   const limit = Date.now() - 150 * 24 * 3600 * 1000;
   return checked.filter(Boolean)
     .filter(({ d }) => !plats.length || d.av.f.some((p) => plats.indexOf(p) >= 0))
-    .slice(0, 20)
+    .slice(0, 30)
     .map(({ d, x }) => ({ item: lean(d), why: reasonParts(x.parts), isnew: !!(d.date && Date.parse(d.date) > limit) }));
 }
 

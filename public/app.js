@@ -75,7 +75,7 @@
 
   var ui = {
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
-    tab: 'me', sug: {}, sugVer: 0, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
+    tab: 'me', sug: {}, sugOff: {}, sugVer: 0, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
     impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false,
     sset: 'menu', accMsg: '', keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
   };
@@ -622,7 +622,7 @@
     ui.sug[tab] = Object.assign({}, ui.sug[tab] || {}, { st: 'loading', ver: ver, items: (ui.sug[tab] && ui.sug[tab].items) || null });
     api('/api/suggestions?tab=' + tab + '&me=' + me).then(function (items) {
       items.forEach(function (x) { know(x.item); });
-      ui.sug[tab] = { st: 'ok', ver: ver, items: items };
+      ui.sug[tab] = { st: 'ok', ver: ver, items: items }; ui.sugOff[tab] = 0;
     }).catch(function (e) { ui.sug[tab] = { st: 'err', ver: ver, err: e.message, items: null }; }).finally(function () {
       if (ui.screen === 'sug') safeRender();
     });
@@ -671,7 +671,9 @@
         return '<div class="sug"><button class="row" style="gap:12px" data-act="open" data-id="' + esc(it.id) + '">' + poster(it, 'sm') + '<span class="rb"><span class="title" style="font-size:16px">' + esc(it.t) + '</span><span class="meta" style="font-size:12px">' + meta(it) + '</span><span class="badges">' + it.av.f.filter(function (p) { return platsOn().indexOf(p) >= 0; }).map(platBadge).join('') + '</span><span class="why">' + reasonHtml(x.why) + '</span></span></button></div>' +
           acts(it.id, '<button class="chip" style="height:44px;padding:0 14px;color:var(--muted)" data-act="dismiss" data-id="' + esc(it.id) + '">' + esc(dis) + '</button>');
       };
-      cards = (list.length ? '<div class="list" style="gap:14px">' + list.slice(0, nFilters() || ui.type !== 'all' ? 12 : 6).map(card).join('') + '</div>' : '<div class="empty">' + (s.items.length ? 'Aucune suggestion ne correspond à ces filtres.<br><button class="link" data-act="resetf">Effacer les filtres</button>' : 'Pas encore de suggestion. Notez quelques titres vus ou importez votre historique dans les réglages.') + '</div>') +
+      var PAGE = 6, off = ui.sugOff[ui.tab] || 0; if (off >= list.length) off = 0;
+      var more = list.length > PAGE ? '<button class="btn ghost" data-act="sugmore">Autres suggestions <span class="help" style="margin-left:6px">' + (off + 1) + '–' + Math.min(off + PAGE, list.length) + ' sur ' + list.length + '</span></button>' : '';
+      cards = (list.length ? '<div class="list" style="gap:14px">' + list.slice(off, off + PAGE).map(card).join('') + '</div>' + more : '<div class="empty">' + (s.items.length ? 'Aucune suggestion ne correspond à ces filtres.<br><button class="link" data-act="resetf">Effacer les filtres</button>' : 'Pas encore de suggestion. Notez quelques titres vus ou importez votre historique dans les réglages.') + '</div>') +
         (fresh.length ? '<h2 style="margin-top:6px">Récent sur vos plateformes</h2><div class="list" style="gap:14px">' + fresh.slice(0, 4).map(card).join('') + '</div>' : '');
       if (s.st === 'loading') cards = '<div aria-busy="true" style="opacity:.6">' + cards + '</div>';
     }
@@ -1132,10 +1134,14 @@
       render(true);
     },
     openfilter: function () { ui.sheet = { type: 'filter', scr: ui.screen }; ui.fq = ''; ui.fexp = false; render(true); },
-    resetf: function () { ui.plats = []; ui.genres = []; ui.cols = []; render(true); },
+    resetf: function () { ui.plats = []; ui.genres = []; ui.cols = []; ui.sugOff = {}; render(true); },
     fexp: function () { ui.fexp = !ui.fexp; render(true); },
     closesheet: function () { ui.sheet = null; render(true); },
     tab: function (d) { ui.tab = d.v; render(true); },
+    sugmore: function () {
+      var s = ui.sug[ui.tab], n = s && s.items ? s.items.filter(function (x) { return passes(x.item); }).length : 0, nx = (ui.sugOff[ui.tab] || 0) + 6;
+      ui.sugOff[ui.tab] = nx >= n ? 0 : nx; render();
+    },
     retrysoon: function () { ui.soon = null; render(true); },
     cs: function (d) { ui.cs = d.v; render(true); },
     theme: function (d) { THEME = d.v; try { localStorage.setItem('maiwatch-theme', THEME); } catch (e) {} applyTheme(); render(true); },
