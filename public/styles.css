@@ -222,3 +222,10 @@ select.fld{appearance:auto}
 button.play{border:0;padding:0;cursor:pointer}
 .tframe{position:relative;width:100%;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#000}
 .tframe iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+
+/* --- Listes allégées sur téléphone : logo seul pour les plateformes --- */
+@media (max-width:600px){
+  .badge.pb{padding:0 5px;gap:0}
+  .badge.pb .pl{width:20px;height:20px;border-radius:5px}
+  .badge.pb .pn{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+}

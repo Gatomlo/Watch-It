@@ -365,7 +365,11 @@
     if (it.ty === 'film') return 'Film' + (it.y ? ' · ' + it.y : '') + (it.len ? ' · ' + fmtLen(it.len) : '');
     return 'Série' + (it.y ? ' · ' + it.y : '') + (it.seasons ? ' · ' + it.seasons + ' saison' + (it.seasons > 1 ? 's' : '') : '') + (it.len ? ' · ' + it.len + ' min' : '');
   }
-  function platBadge(id) { return '<span class="badge">' + logoOf(id) + esc(pnameOf(id)) + '</span>'; }
+  // Badge plateforme : logo + nom ; sur téléphone le nom est masqué (lecteurs d'écran : conservé) quand le logo existe.
+  function platBadge(id) {
+    var hasLogo = !!(PV[id] && PV[id].logo);
+    return '<span class="badge pb" title="' + esc(pnameOf(id)) + '">' + logoOf(id) + '<span' + (hasLogo ? ' class="pn"' : '') + '>' + esc(pnameOf(id)) + '</span></span>';
+  }
   function badges(it, av) {
     var a = av || AV[it.id], mine = a ? a.f.filter(function (p) { return platsOn().indexOf(p) >= 0; }) : [], h = '';
     mine.forEach(function (p) { h += platBadge(p); });
