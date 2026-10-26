@@ -5,17 +5,53 @@
 // Données « où regarder » : fournies par TMDB d'après JustWatch (mention obligatoire dans l'appli).
 
 const store = require("./db");
+const { encrypt, decrypt } = require("./cryptoBox");
 
 const BASE = (process.env.TMDB_BASE || "https://api.themoviedb.org/3").replace(/\/$/, "");
 const H = 60 * 60 * 1000;
 const LANG = "fr-FR";
 
-function configured() {
-  return !!(process.env.TMDB_API_KEY || process.env.TMDB_READ_TOKEN);
+// La clé TMDB se saisit dans l'appli (chiffrée en base) ; TMDB_API_KEY / TMDB_READ_TOKEN
+// dans l'environnement restent possibles et servent de repli.
+function getKey() {
+  const enc = store.getSecret("tmdb_key");
+  const k = enc ? decrypt(enc) : null;
+  if (k) return k.trim();
+  return process.env.TMDB_READ_TOKEN || process.env.TMDB_API_KEY || null;
 }
+const isToken = (k) => /^eyJ/.test(k);
+function configured() { return !!getKey(); }
+function status() {
+  const enc = store.getSecret("tmdb_key");
+  const k = enc ? decrypt(enc) : null;
+  if (k) return { hasKey: true, last4: k.slice(-4), source: "app" };
+  const env = process.env.TMDB_READ_TOKEN || process.env.TMDB_API_KEY;
+  return env ? { hasKey: true, last4: env.slice(-4), source: "env" } : { hasKey: false, last4: null, source: null };
+}
+function authFor(k, qs) {
+  const headers = { Accept: "application/json" };
+  if (isToken(k)) headers.Authorization = "Bearer " + k; else qs.set("api_key", k);
+  return headers;
+}
+// Vérifie une clé auprès de TMDB avant de l'enregistrer.
+async function check(key) {
+  const qs = new URLSearchParams();
+  const headers = authFor(key, qs);
+  try {
+    const res = await fetch(BASE + "/configuration?" + qs.toString(), { headers, signal: AbortSignal.timeout(15000) });
+    if (res.status === 401 || res.status === 403) return { ok: false, error: "Clé refusée par TMDB. Vérifiez qu'elle est copiée en entier." };
+    if (!res.ok) return { ok: false, error: "TMDB a répondu une erreur (" + res.status + "). Réessayez plus tard." };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: "TMDB est injoignable depuis le serveur." };
+  }
+}
+function saveKey(key) { store.setSecret("tmdb_key", encrypt(key.trim())); }
+function clearKey() { store.deleteSecret("tmdb_key"); }
 
 async function call(path, params, ttl) {
-  if (!configured()) {
+  const key = getKey();
+  if (!key) {
     const e = new Error("tmdb_not_configured");
     e.status = 503;
     throw e;
@@ -26,13 +62,12 @@ async function call(path, params, ttl) {
     const hit = store.cacheGet(cacheKey);
     if (hit) return hit;
   }
-  const headers = { Accept: "application/json" };
-  if (process.env.TMDB_READ_TOKEN) headers.Authorization = "Bearer " + process.env.TMDB_READ_TOKEN;
-  else qs.set("api_key", process.env.TMDB_API_KEY);
+  const headers = authFor(key, qs);
   const res = await fetch(BASE + path + "?" + qs.toString(), { headers, signal: AbortSignal.timeout(15000) });
   if (!res.ok) {
     const e = new Error("tmdb_" + res.status);
-    e.status = res.status === 404 ? 404 : 502;
+    e.status = res.status === 404 ? 404 : (res.status === 401 ? 503 : 502);
+    if (res.status === 401) e.message = "tmdb_not_configured";
     throw e;
   }
   const data = await res.json();
@@ -137,4 +172,4 @@ async function discover(media, params) {
   return (data.results || []).map((r) => lite(r, media, genres)).filter(Boolean);
 }
 
-module.exports = { configured, genreMaps, search, details, providers, discover, parseKey, mediaOf, typeOf };
+module.exports = { configured, status, check, saveKey, clearKey, genreMaps, search, details, providers, discover, parseKey, mediaOf, typeOf };

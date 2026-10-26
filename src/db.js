@@ -2,7 +2,6 @@
 
 const fs = require("fs");
 const path = require("path");
-const bcrypt = require("bcryptjs");
 const { DatabaseSync } = require("node:sqlite");
 
 // Même convention que Fée Lezcomptes : DATA_DIR relatif = relatif à ce projet.
@@ -50,31 +49,24 @@ db.exec(`
 
 // L'état partagé (liste, notes, profils, plateformes) est un seul JSON numéroté.
 const DEFAULT_STATE = {
-  settings: { region: process.env.DEFAULT_REGION || "BE", platforms: [], profiles: { M: "Moi", E: "Elle" } },
+  settings: { region: "BE", platforms: [], profiles: { M: "Moi", E: "Elle" } },
   list: [],
   dismissed: { M: [], E: [] },
 };
-
-function ensureDefaultUser() {
-  const count = db.prepare("SELECT COUNT(*) AS n FROM users").get().n;
-  if (count > 0) return;
-  const username = process.env.ADMIN_USERNAME || "foyer";
-  const password = process.env.ADMIN_PASSWORD || "change-me-now";
-  db.prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)").run(username, bcrypt.hashSync(password, 12));
-  console.warn(
-    '\n[mAIwatch] Aucun compte trouvé : un compte a été créé avec l\'identifiant "' + username + '".\n' +
-      "  -> Change le mot de passe tout de suite : npm run set-password -- " + username + " <nouveau_mot_de_passe>\n"
-  );
-}
 
 function ensureDefaultState() {
   if (db.prepare("SELECT id FROM app_state WHERE id = 1").get()) return;
   db.prepare("INSERT INTO app_state (id, data) VALUES (1, ?)").run(JSON.stringify(DEFAULT_STATE));
 }
 
-ensureDefaultUser();
 ensureDefaultState();
 
+const userCount = () => db.prepare("SELECT COUNT(*) AS n FROM users").get().n;
+// Crée le premier (et seul) compte ; ne fait rien s'il en existe déjà un (atomique). Renvoie l'id ou null.
+function createFirstUser(username, hash) {
+  const r = db.prepare("INSERT INTO users (username, password_hash) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM users)").run(username, hash);
+  return r.changes ? Number(r.lastInsertRowid) : null;
+}
 const getUser = (username) => db.prepare("SELECT * FROM users WHERE username = ?").get(username);
 const getFirstUser = () => db.prepare("SELECT * FROM users ORDER BY id LIMIT 1").get();
 const updateUsername = (id, name) =>
@@ -128,7 +120,7 @@ function cachePurge() {
 cachePurge();
 
 module.exports = {
-  db, getUser, getFirstUser, updateUsername, updatePasswordHash,
+  db, userCount, createFirstUser, getUser, getFirstUser, updateUsername, updatePasswordHash,
   getState, getStateVersion, saveState, getSecret, setSecret, deleteSecret,
   cacheGet, cacheSet, cachePurge, DEFAULT_STATE,
 };

@@ -47,7 +47,7 @@
   var S = null;
   var me = 'M';             // profil de cet appareil (propre à l'appareil, non synchronisé)
   try { me = localStorage.getItem('maiwatch-me') === 'E' ? 'E' : 'M'; } catch (e) {}
-  var CFG = { tmdb: true, region: 'BE', ai: { provider: 'claude', hasKey: false, last4: null, tested: false } };
+  var CFG = { tmdb: true, tmdbKey: { hasKey: true, last4: null, source: 'app' }, region: 'BE', ai: { provider: 'claude', hasKey: false, last4: null, tested: false } };
   var AV = {};              // disponibilité des titres de la liste : id -> { f[], r[], b[], trailer }
   var AV_AT = 0;
   var PV = {};              // plateformes connues : id -> { id, name, logo }
@@ -58,7 +58,7 @@
   var ui = {
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
     tab: 'me', sug: {}, sugVer: 0, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
-    impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: ''
+    impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false
   };
   var booted = false, isAuthenticated = false, currentUsername = '';
 
@@ -103,7 +103,7 @@
       if (r.status === 401) { handleUnauthorized(); throw new Error('Session expirée.'); }
       return r.json().catch(function () { return {}; }).then(function (j) {
         if (!r.ok) {
-          var e = new Error(j.error === 'tmdb_not_configured' ? 'TMDB n’est pas configuré sur le serveur.' : (j.error || 'Erreur ' + r.status));
+          var e = new Error(j.error === 'tmdb_not_configured' ? 'Ajoutez d’abord la clé TMDB dans les réglages.' : (j.error || 'Erreur ' + r.status));
           e.code = j.error; throw e;
         }
         return j;
@@ -376,7 +376,18 @@
   }
   function skeletons(n) { var h = ''; for (var i = 0; i < n; i++) h += '<div class="skel"></div>'; return '<div class="list" aria-busy="true">' + h + '</div>'; }
   function errBox(msg, act) { return '<div class="empty">' + esc(msg) + (act ? '<br><button class="link" data-act="' + act + '">Réessayer</button>' : '') + '</div>'; }
-  function noTmdb() { return '<div class="notice"><b>TMDB n’est pas configuré.</b><br>Ajoutez <code>TMDB_API_KEY</code> dans le fichier <code>.env</code> du serveur (compte gratuit sur themoviedb.org), puis redémarrez-le.</div>'; }
+  // Clé TMDB : saisie ici (vérifiée puis chiffrée côté serveur), jamais dans un fichier.
+  function tmdbForm(first) {
+    var T = CFG.tmdbKey || {};
+    return '<div class="group"><label for="tmdbkey" class="help" style="line-height:1.5">' + (first ? '<b style="color:var(--fg)">Dernière étape : la clé TMDB.</b> ' : '') +
+      'TMDB fournit les films, séries, affiches et plateformes. Compte gratuit sur <a href="https://www.themoviedb.org/signup" target="_blank" rel="noopener" style="color:var(--fg)">themoviedb.org</a>, puis ' +
+      '<a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--fg)">Réglages &gt; API</a> : copiez la « Clé d’API » (ou le « Jeton d’accès en lecture »).</label>' +
+      '<input id="tmdbkey" class="kinput" type="password" autocomplete="off" placeholder="' + (T.hasKey && T.last4 ? 'Clé enregistrée (…' + esc(T.last4) + '). Collez-en une autre pour la remplacer.' : 'Collez la clé TMDB') + '">' +
+      '<div style="display:flex;gap:10px"><button class="btn ghost" style="height:44px" data-act="tmdbsave"' + (ui.tmdbBusy ? ' disabled' : '') + '>' + (ui.tmdbBusy ? 'Vérification…' : 'Enregistrer et vérifier') + '</button>' +
+      (T.hasKey && T.source === 'app' ? '<button class="btn ghost" style="height:44px" data-act="tmdbclear">Retirer la clé</button>' : '') + '</div>' +
+      (ui.tmdbMsg ? '<div class="notice" role="status">' + esc(ui.tmdbMsg) + '</div>' : '') + '</div>';
+  }
+  function noTmdb() { return '<div class="notice">' + tmdbForm(true) + '</div>'; }
 
   // ===================== Écrans =====================
   var V = {};
@@ -539,7 +550,9 @@
     var shownP = provs.filter(function (p) { return !q || norm(p.name).indexOf(q) >= 0; });
     var rows = shownP.slice(0, q ? 60 : 18).map(function (p) { return crow('mp', p.id, p.name, '', platsOn().indexOf(p.id) >= 0, logoOf(p.id)); }).join('');
     var region = '<select id="region" class="fld" aria-label="Région">' + REGIONS.map(function (r) { return '<option value="' + r[0] + '"' + (S.settings.region === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; }).join('') + '</select>';
+    var T = CFG.tmdbKey || {};
     return '<header class="top tight">' + back() + '<h1 class="s">Réglages</h1></header>' +
+      '<div class="group"><div class="sec"><h2>Films et séries (TMDB)</h2>' + (T.hasKey ? '<span class="st ok">Clé enregistrée</span>' : '<span class="st no">Aucune clé</span>') + '</div>' + (T.source === 'env' ? '<span class="help">Clé fournie par le serveur (variable d’environnement).</span>' : '') + tmdbForm(false) + '</div>' +
       '<div class="group"><div class="sec"><h2>Nos plateformes</h2></div>' + region +
       '<label for="pvq" style="position:absolute;left:-9999px">Chercher une plateforme</label><input id="pvq" class="fsearch" type="search" autocomplete="off" placeholder="Chercher une plateforme" value="' + esc(ui.pvq) + '">' +
       '<div id="pvlist">' + (rows || '<span class="help">' + (provs.length ? 'Aucune plateforme ne correspond.' : 'Chargement des plateformes…') + '</span>') + '</div></div>' +
@@ -593,6 +606,15 @@
     return '';
   }
 
+  function setupView() {
+    return '<div class="login"><form data-form="setup"><img src="' + BASE + '/logo.svg" alt=""><h1>Bienvenue sur mAIwatch</h1><p class="sub" style="margin:0">Créez le compte du foyer. Il sera partagé par les deux profils.</p>' +
+      (ui.loginError ? '<p class="err">' + esc(ui.loginError) + '</p>' : '') +
+      '<label>Identifiant<input type="text" name="username" required maxlength="40" autocomplete="username"></label>' +
+      '<label>Mot de passe (8 caractères minimum)<input type="password" name="password" required minlength="8" autocomplete="new-password"></label>' +
+      '<label>Confirmer le mot de passe<input type="password" name="password2" required minlength="8" autocomplete="new-password"></label>' +
+      '<label>Code d’installation<input type="text" name="code" required autocomplete="off" autocapitalize="characters" placeholder="XXXX-XXXX-XXXX"><span class="help" style="font-weight:500">Affiché dans la console du serveur au démarrage (<code>pm2 logs</code>). Il garantit que vous seul créez le compte.</span></label>' +
+      '<button type="submit" class="btn">Créer le compte</button></form></div>';
+  }
   function loginView() {
     return '<div class="login"><form data-form="login"><img src="' + BASE + '/logo.svg" alt=""><h1>mAIwatch</h1><p class="sub" style="margin:0">Notre liste de films et séries</p>' +
       (ui.loginError ? '<p class="err">' + esc(ui.loginError) + '</p>' : '') +
@@ -606,7 +628,7 @@
   function render(keepScroll) {
     var y = window.scrollY;
     if (!booted) { appEl.innerHTML = '<div class="loading"><img src="' + BASE + '/logo.svg" alt="">Chargement…</div>'; return; }
-    if (!isAuthenticated) { appEl.innerHTML = loginView(); layer.innerHTML = ''; return; }
+    if (!isAuthenticated) { appEl.innerHTML = ui.setup ? setupView() : loginView(); layer.innerHTML = ''; return; }
     if (!S) { appEl.innerHTML = '<div class="loading"><img src="' + BASE + '/logo.svg" alt="">Pas de connexion au serveur.<br>La liste s’affichera dès que le réseau revient.</div>'; return; }
     renderDeferred = false;
     var fb = document.querySelector('.fbody'), fs = fb ? fb.scrollTop : 0;
@@ -772,8 +794,21 @@
     logout: function () {
       if (dirty) { toast('Des modifications ne sont pas encore envoyées : attendez le retour du réseau.'); return; }
       apiFetch('/api/logout', { method: 'POST' }).finally(function () {
-        isAuthenticated = false; S = null; baseState = null; baseVersion = null; try { localStorage.removeItem(STORE_KEY); } catch (e) {} render();
+        isAuthenticated = false; S = null; baseState = null; baseVersion = null; try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+        ui.screen = 'home'; ui.hist = []; ui.detail = null; ui.sug = {}; ui.env = null; ui.sr = null; ui.q = ''; ui.plats = []; ui.genres = []; ui.type = 'all'; ui.sheet = null; render();
       });
+    },
+    tmdbsave: function () {
+      var inp = document.getElementById('tmdbkey'), key = inp ? inp.value.trim() : '';
+      if (!key) { ui.tmdbMsg = 'Collez d’abord la clé TMDB.'; render(true); return; }
+      ui.tmdbBusy = true; ui.tmdbMsg = ''; render(true);
+      api('/api/tmdb-key', { method: 'PUT', body: { key: key } }).then(function (r) {
+        CFG.tmdb = r.tmdb; CFG.tmdbKey = r.tmdbKey; ui.tmdbMsg = 'Clé TMDB vérifiée et enregistrée.';
+        ui.sug = {}; PV = {}; return loadProviders(true).then(function () { AV = {}; AV_AT = 0; refreshAvail(); });
+      }).catch(function (e) { ui.tmdbMsg = e.message; }).finally(function () { ui.tmdbBusy = false; render(true); });
+    },
+    tmdbclear: function () {
+      api('/api/tmdb-key', { method: 'DELETE' }).then(function (r) { CFG.tmdb = r.tmdb; CFG.tmdbKey = r.tmdbKey; ui.tmdbMsg = 'Clé TMDB retirée.'; render(true); }).catch(function (e) { toast(e.message); });
     },
     syncnow: function () { syncNow(); pullState(); },
     impmode: function (d) { ui.impMode = d.v; render(true); },
@@ -846,6 +881,15 @@
           isAuthenticated = true; currentUsername = j.username || ''; startSession();
         });
       }).catch(function () { ui.loginError = 'Pas de connexion au serveur.'; render(); });
+    } else if (form.dataset.form === 'setup') {
+      ui.loginError = '';
+      if (fd.get('password') !== fd.get('password2')) { ui.loginError = 'Les deux mots de passe ne sont pas identiques.'; render(); return; }
+      apiFetch('/api/setup', { method: 'POST', body: { username: fd.get('username'), password: fd.get('password'), code: fd.get('code') } }).then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok) { ui.loginError = j.error || 'Création impossible.'; render(); return; }
+          ui.setup = false; isAuthenticated = true; currentUsername = j.username || ''; startSession();
+        });
+      }).catch(function () { ui.loginError = 'Pas de connexion au serveur.'; render(); });
     } else if (form.dataset.form === 'password') {
       api('/api/account/password', { method: 'POST', body: { currentPassword: fd.get('cur'), newPassword: fd.get('nw') } })
         .then(function () { ui.pwMsg = 'Mot de passe changé.'; }).catch(function (e) { ui.pwMsg = e.message; }).finally(function () { render(true); });
@@ -889,7 +933,7 @@
       setOnline(true);
       isAuthenticated = !!sess.authenticated;
       if (sess.username) currentUsername = sess.username;
-      if (!isAuthenticated) { booted = true; render(); return; }
+      if (!isAuthenticated) { ui.setup = !!sess.setup; booted = true; render(); return; }
       startSession();
     }).catch(function () {
       // Pas de réseau : on ouvre la copie gardée sur l'appareil.

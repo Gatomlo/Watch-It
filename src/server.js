@@ -9,6 +9,7 @@ const session = require("express-session");
 const rateLimit = require("express-rate-limit");
 const bcrypt = require("bcryptjs");
 
+const keys = require("./keys");
 const db = require("./db");
 const SqliteSessionStore = require("./sessionStore");
 const tmdb = require("./tmdb");
@@ -17,16 +18,24 @@ const engine = require("./engine");
 
 const app = express();
 const PORT = process.env.PORT || 3100;
-const IS_PROD = process.env.NODE_ENV === "production";
 
-let sessionSecret = process.env.SESSION_SECRET;
-if (!sessionSecret || sessionSecret === "change-this-to-a-long-random-string") {
-  if (IS_PROD) {
-    throw new Error("[mAIwatch] SESSION_SECRET manquant ou laissé par défaut dans .env.");
+// Aucun .env requis : les clés internes sont générées dans data/keys.json (voir keys.js).
+const sessionSecret = keys.session;
+
+// Premier démarrage : aucun compte. Un code d'installation est affiché dans la console du serveur
+// (pm2 logs) ; il faut le saisir pour créer le compte, afin que personne d'autre ne le fasse avant vous.
+let setupCode = null;
+function ensureSetupCode() {
+  if (db.userCount() > 0) { setupCode = null; return; }
+  if (!setupCode) {
+    const h = crypto.randomBytes(6).toString("hex").toUpperCase();
+    setupCode = h.slice(0, 4) + "-" + h.slice(4, 8) + "-" + h.slice(8, 12);
+    console.warn(
+      "\n[mAIwatch] Aucun compte. Ouvrez le site et créez-le avec ce code d'installation :\n\n      " + setupCode + "\n"
+    );
   }
-  sessionSecret = crypto.randomBytes(48).toString("hex");
-  console.warn("[mAIwatch] SESSION_SECRET absent : valeur temporaire générée (sessions perdues au redémarrage).");
 }
+ensureSetupCode();
 
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
@@ -43,7 +52,7 @@ app.use(
     resave: false,
     saveUninitialized: false,
     rolling: true,
-    cookie: { httpOnly: true, sameSite: "lax", secure: process.env.COOKIE_SECURE === "true", maxAge: SESSION_MAX_AGE },
+    cookie: { httpOnly: true, sameSite: "lax", secure: process.env.COOKIE_SECURE === "true" ? true : process.env.COOKIE_SECURE === "false" ? false : "auto", maxAge: SESSION_MAX_AGE },
   })
 );
 
@@ -88,6 +97,37 @@ app.post("/api/login", loginLimiter, (req, res) => {
   });
 });
 
+// Création du compte du foyer, possible une seule fois (tant qu'aucun compte n'existe).
+const setupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false,
+  message: { error: "Trop de tentatives. Réessayez dans quelques minutes." },
+});
+app.post("/api/setup", setupLimiter, (req, res) => {
+  if (db.userCount() > 0) return res.status(409).json({ error: "Un compte existe déjà. Connectez-vous." });
+  const { username, password, code } = req.body || {};
+  if (typeof username !== "string" || !username.trim() || username.trim().length > 40) {
+    return res.status(400).json({ error: "Choisissez un identifiant (40 caractères au plus)." });
+  }
+  if (typeof password !== "string" || password.length < 8) {
+    return res.status(400).json({ error: "Le mot de passe doit contenir au moins 8 caractères." });
+  }
+  ensureSetupCode();
+  const given = Buffer.from(String(code || "").trim().toUpperCase());
+  const want = Buffer.from(setupCode || "");
+  if (!setupCode || given.length !== want.length || !crypto.timingSafeEqual(given, want)) {
+    return res.status(403).json({ error: "Code d'installation incorrect. Il est affiché dans la console du serveur (pm2 logs mAIwatch)." });
+  }
+  const id = db.createFirstUser(username.trim(), bcrypt.hashSync(password, 12));
+  if (id == null) return res.status(409).json({ error: "Un compte existe déjà. Connectez-vous." });
+  setupCode = null;
+  req.session.regenerate((err) => {
+    if (err) return res.status(500).json({ error: "Erreur serveur." });
+    req.session.userId = id;
+    req.session.cookie.maxAge = REMEMBER_MAX_AGE;
+    req.session.save((e2) => (e2 ? res.status(500).json({ error: "Erreur serveur." }) : res.json({ ok: true, username: username.trim() })));
+  });
+});
+
 app.post("/api/logout", (req, res) => {
   req.session.destroy(() => {
     res.clearCookie("maiwatch_sid");
@@ -96,7 +136,7 @@ app.post("/api/logout", (req, res) => {
 });
 
 app.get("/api/session", (req, res) => {
-  if (!req.session || !req.session.userId) return res.json({ authenticated: false });
+  if (!req.session || !req.session.userId) return res.json({ authenticated: false, setup: db.userCount() === 0 });
   const user = db.getFirstUser();
   res.json({ authenticated: true, username: user ? user.username : null });
 });
@@ -142,7 +182,21 @@ app.put("/api/state", requireAuth, (req, res) => {
 // --- Configuration, TMDB ---
 
 app.get("/api/config", requireAuth, (req, res) => {
-  res.json({ tmdb: tmdb.configured(), region: db.getState().settings.region || "BE", ai: ai.status() });
+  res.json({ tmdb: tmdb.configured(), tmdbKey: tmdb.status(), region: db.getState().settings.region || "BE", ai: ai.status() });
+});
+
+// Clé TMDB : saisie dans l'appli, vérifiée auprès de TMDB puis chiffrée en base.
+app.put("/api/tmdb-key", requireAuth, wrap(async (req, res) => {
+  const key = String((req.body && req.body.key) || "").trim();
+  if (key.length < 20 || key.length > 600 || /\s/.test(key)) return res.status(400).json({ error: "Collez la clé TMDB en entier (clé API v3 ou jeton de lecture v4)." });
+  const r = await tmdb.check(key);
+  if (!r.ok) return res.status(400).json({ error: r.error });
+  tmdb.saveKey(key);
+  res.json({ tmdb: tmdb.configured(), tmdbKey: tmdb.status() });
+}));
+app.delete("/api/tmdb-key", requireAuth, (req, res) => {
+  tmdb.clearKey();
+  res.json({ tmdb: tmdb.configured(), tmdbKey: tmdb.status() });
 });
 
 app.get("/api/providers", requireAuth, wrap(async (req, res) => {
@@ -224,7 +278,6 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log("[mAIwatch] Serveur démarré sur http://localhost:" + PORT);
-    if (!tmdb.configured()) console.warn("[mAIwatch] TMDB_API_KEY / TMDB_READ_TOKEN absent : films et séries indisponibles.");
   });
 }
 module.exports = app;

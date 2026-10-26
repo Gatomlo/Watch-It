@@ -1,10 +1,10 @@
 # mAIwatch — films et séries à voir
 
-Appli web (PWA) pour un foyer : liste « À voir » / « Vus », notes par profil, suggestions, envies en langage naturel (IA facultative), import. Même stack que Fée Lezcomptes (Node ≥ 22.5 `node:sqlite`, Express, JS vanilla sans build), Port 3100, base `data/app.db`.
+Appli web (PWA) pour un foyer : liste « À voir » / « Vus », notes par profil, suggestions, envies en langage naturel (IA facultative), import. Même stack que Fée Lezcomptes (Node ≥ 22.5 `node:sqlite`, Express, JS vanilla sans build) ; port 3100, base `data/app.db`.
 
 ## Fichiers clés
-- `src/server.js` : auth (comme Fée Lezcomptes), `GET/PUT /api/state` (version `X-State-Version`, `X-Base-Version` → 409), `/api/search|title|availability|providers|suggestions|envies|import`, `/api/ai` (clé IA), statiques.
-- `src/db.js` : SQLite (`users`, `app_state` JSON + version, `sessions`, `secrets`, `cache`). `src/cryptoBox.js` : AES-256-GCM pour la clé IA. `src/tmdb.js` : API TMDB + cache. `src/ai.js` : Claude / Gemini / Mistral. `src/engine.js` : suggestions et envies.
+- `src/server.js` : auth (comme Fée Lezcomptes) + `POST /api/setup` (création du compte à la première visite, code d'installation affiché dans la console), `/api/tmdb-key`, `GET/PUT /api/state` (version `X-State-Version`, `X-Base-Version` → 409), `/api/search|title|availability|providers|suggestions|envies|import`, `/api/ai` (clé IA), statiques.
+- `src/db.js` : SQLite (`users`, `app_state` JSON + version, `sessions`, `secrets`, `cache`). `src/keys.js` : clés internes auto-générées (`data/keys.json`). `src/cryptoBox.js` : AES-256-GCM pour les clés API (TMDB, IA). `src/tmdb.js` : API TMDB + cache. `src/ai.js` : Claude / Gemini / Mistral. `src/engine.js` : suggestions et envies.
 - `public/app.js` (tout le front : état, synchro, rendu, événements), `styles.css`, `sw.js`, `manifest.json` (partage + raccourcis), `logo.svg` (+ PNG).
 
 ## Modèle de données
@@ -16,7 +16,7 @@ Appli web (PWA) pour un foyer : liste « À voir » / « Vus », notes par profi
 - Filtres : type conservé d'un onglet à l'autre ; plateformes et genres remis à zéro au changement d'onglet.
 
 ## Commandes
-- `npm install`, `cp .env.example .env`, `npm start`. Test isolé : `PORT`, `DATA_DIR`, identifiants et `TMDB_BASE` (faux TMDB) dédiés ; `AI_BASE_CLAUDE|GEMINI|MISTRAL` pour un faux fournisseur IA.
+- `npm install`, `npm start` (aucun `.env` : compte créé à la première visite avec le code d'installation de la console, clés TMDB et IA saisies dans l'appli). Test isolé : `PORT`, `DATA_DIR` et `TMDB_BASE` (faux TMDB) dédiés ; `AI_BASE_CLAUDE|GEMINI|MISTRAL` pour un faux fournisseur IA.
 - Pas de tests automatisés ; vérifier au minimum `node --check` sur chaque fichier modifié.
-- Ne jamais versionner `.env`, `test.env`, ni de base `*.db`. Ne jamais mettre de clé API dans le dépôt ni dans le navigateur.
+- Ne jamais versionner `.env`, `data/` (base et `keys.json`). Ne jamais mettre de clé API dans le dépôt ni dans le navigateur.
 - Git : https://github.com/Gatomlo/mAIwatch (public).
