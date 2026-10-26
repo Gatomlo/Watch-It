@@ -384,7 +384,7 @@
     if (soon) return '<div class="badges">' + h + '</div>';
     if (!a) h += '<span class="badge mut">Plateformes…</span>';
     else if (!mine.length) h += a.f.length ? '<span class="badge mut">Sur d’autres plateformes</span>' : (a.r.length || a.b.length ? '<span class="badge warn">Location ou achat</span>' : '<span class="badge warn">Pas en streaming</span>');
-    if (a) h += a.trailer ? '<span class="badge soft">▶ Bande-annonce</span>' : '<span class="badge mut">Sans bande-annonce</span>';
+    if (a) h += a.trailer ? '<span class="badge soft tr" title="Bande-annonce disponible">' + I('play') + '<span class="tn">Bande-annonce</span></span>' : '<span class="badge mut tr" title="Pas de bande-annonce">' + I('play') + '<span class="tn">Sans bande-annonce</span></span>';
     return '<div class="badges">' + h + '</div>';
   }
   function starRow(cur, act, attrs, cls) {

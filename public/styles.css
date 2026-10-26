@@ -229,3 +229,12 @@ button.play{border:0;padding:0;cursor:pointer}
   .badge.pb .pl{width:20px;height:20px;border-radius:5px}
   .badge.pb .pn{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 }
+
+/* --- Bande-annonce : icône seule sur téléphone --- */
+.badge.tr .ico{width:11px;height:11px;fill:currentColor;stroke:none;margin-right:5px}
+.badge.mut.tr .ico{opacity:.45}
+@media (max-width:600px){
+  .badge.tr{padding:0 8px}
+  .badge.tr .ico{width:12px;height:12px;margin-right:0}
+  .badge.tr .tn{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+}
