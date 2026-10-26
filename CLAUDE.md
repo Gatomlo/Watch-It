@@ -4,15 +4,16 @@ Appli web (PWA) pour un foyer : liste « À voir » / « Vus », notes par profi
 
 ## Fichiers clés
 - `src/server.js` : auth (comme Fée Lezcomptes) + `POST /api/setup` (création du compte à la première visite, code d'installation affiché dans la console), `/api/tmdb-key`, `GET/PUT /api/state` (version `X-State-Version`, `X-Base-Version` → 409), `/api/search|title|availability|providers|suggestions|envies|import`, `/api/ai` (clé IA), statiques.
-- `src/db.js` : SQLite (`users`, `app_state` JSON + version, `sessions`, `secrets`, `cache`). `src/keys.js` : clés internes auto-générées (`data/keys.json`). `src/cryptoBox.js` : AES-256-GCM pour les clés API (TMDB, IA). `src/tmdb.js` : API TMDB + cache. `src/ai.js` : Claude / Gemini / Mistral. `src/engine.js` : suggestions et envies.
+- `src/db.js` : SQLite (`users`, `app_state` JSON + version, `sessions`, `secrets`, `cache`). `src/keys.js` : clés internes auto-générées (`data/keys.json`). `src/cryptoBox.js` : AES-256-GCM pour les clés API (TMDB, IA). `src/tmdb.js` : API TMDB + cache. `src/ai.js` : Claude / Gemini / Mistral. `src/engine.js` : suggestions, envies, « Bientôt ». `src/importers.js` : Letterboxd (RSS) et Trakt. `src/push.js` : Web Push (clés VAPID en base, `watch()` toutes les 6 h).
 - `public/app.js` (tout le front : état, synchro, rendu, événements), `styles.css`, `sw.js`, `manifest.json` (partage + raccourcis), `logo.svg` (+ PNG).
 
 ## Modèle de données
-- État partagé : `{ settings:{region, platforms[ids TMDB], profiles{M,E}}, list[], dismissed{M[],E[]} }`.
-- Entrée de liste : `{ id:'movie:123'|'tv:456', ty:'film'|'serie', t, y, p(affiche), g[noms de genres], len, by:'M'|'E', at, status:'todo'|'seen', r:{M,E: 1|-1}, note, av:{f[]}, alert }`. Le profil actif de l'appareil (`me`) reste dans localStorage, hors état synchronisé.
+- État partagé : `{ settings:{region, platforms[ids TMDB], profiles{M,E}, ratingScale:5}, list[], dismissed{M[],E[]}, match }`. `match` = partie « Match à deux » : `{id, deck[], votes:{M:{id:±1},E:{}}}`. Migration serveur unique des anciennes notes 👍/👎 vers les étoiles (`db.js`).
+- Entrée de liste : `{ id:'movie:123'|'tv:456', ty:'film'|'serie', t, y, p(affiche), g[noms de genres], len, by:'M'|'E', at, status:'todo'|'seen', r:{M,E: 1..5 étoiles}, prog:{s,e} (séries), note, av:{f[]}, alert }`. Le profil actif de l'appareil (`me`) reste dans localStorage, hors état synchronisé.
 - Disponibilité (`AV`) : récupérée à l'ouverture (cache 6 h), jamais synchronisée ; `detectChanges` compare à `e.av` pour les alertes « N'est plus sur… ».
-- Suggestions : score = Σ poids (aimé +3, pas aimé −3, ajouté +1 / +0,4 si ajouté par l'autre, refusé −2) × proximité (recommandations TMDB + genres communs), filtrées sur les plateformes du foyer.
+- Suggestions : score = Σ poids (étoiles : (note − 3) × 1,5 ; ajouté +1 / +0,4 si ajouté par l'autre ; refusé −2) × proximité (recommandations TMDB + genres communs), filtrées sur les plateformes du foyer.
 - Synchro / hors-ligne : copie de `app.js` de Fée Lezcomptes (`merge3`, réessai 15 s, `dirty`). Listes d'objets fusionnées par `id` (chaîne).
+- Thème : `data-theme` sur `<html>` (dark|light|auto, localStorage `maiwatch-theme`), jetons CSS dans `styles.css`.
 - Filtres : type conservé d'un onglet à l'autre ; plateformes et genres remis à zéro au changement d'onglet.
 
 ## Commandes

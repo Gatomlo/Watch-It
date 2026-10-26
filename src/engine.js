@@ -26,14 +26,22 @@ const region = (state) => (state.settings && state.settings.region) || process.e
 const platformsOf = (state) => (state.settings && state.settings.platforms) || [];
 const inList = (state, id) => state.list.some((e) => e.id === id);
 
+// Notes : étoiles 1 à 5 (réglage ratingScale = 5) ; anciennes notes 👍 / 👎 (+1 / −1) lues telles quelles.
+// Poids : 5 étoiles +3, 4 : +1,5, 3 : 0 (neutre), 2 : −1,5, 1 : −3.
+function rating(state, r) {
+  if (!r) return 0;
+  if (state.settings && state.settings.ratingScale === 5) return (r - 3) * 1.5;
+  return r > 0 ? 3 : -3;
+}
+
 // Ce qui compte pour un profil : aimé +3, pas aimé −3, dans la liste +1 (ajouté par lui) ou +0,4, refusé −2.
 function sourcesOf(state, user) {
   const src = [];
   state.list.forEach((e) => {
     if (e.status === "seen") {
-      const r = e.r && e.r[user];
-      if (r === 1) src.push({ e, w: 3, l: "aimé" });
-      else if (r === -1) src.push({ e, w: -3, l: "pas aimé" });
+      const v = rating(state, e.r && e.r[user]);
+      if (v > 0) src.push({ e, w: v, l: "aimé" });
+      else if (v < 0) src.push({ e, w: v, l: "pas aimé" });
     } else {
       src.push({ e, w: e.by === user ? 1 : 0.4, l: "dans votre liste" });
     }
@@ -210,7 +218,7 @@ async function envies(state, text, me) {
 
   const dismissed = new Set((state.dismissed && state.dismissed[me]) || []);
   const likedGenres = {};
-  state.list.forEach((e) => { if (e.status === "seen" && e.r && e.r[me] === 1) (e.g || []).forEach((g) => { likedGenres[g] = (likedGenres[g] || 0) + 1; }); });
+  state.list.forEach((e) => { if (e.status === "seen" && rating(state, e.r && e.r[me]) > 0) (e.g || []).forEach((g) => { likedGenres[g] = (likedGenres[g] || 0) + 1; }); });
   const affinity = (it) => (it.g || []).reduce((s, g) => s + (likedGenres[g] || 0), 0);
 
   const mine = state.list.filter((e) => e.status === "todo" && matches(e, c)).map((e) => Object.assign({}, e, { _list: true }));
@@ -241,7 +249,7 @@ async function envies(state, text, me) {
   if (mode === "ai") {
     try {
       const cand = mine.slice(0, 10).concat(fresh.slice(0, 16));
-      const taste = (v) => state.list.filter((e) => e.status === "seen" && e.r && e.r[me] === v).slice(-12).map((e) => e.t);
+      const taste = (sign) => state.list.filter((e) => e.status === "seen" && Math.sign(rating(state, e.r && e.r[me])) === sign).slice(-12).map((e) => e.t);
       const system =
         "Tu aides un couple à choisir quoi regarder. On te donne une envie, un résumé de leurs goûts et une liste de candidats numérotés. " +
         'Choisis jusqu\'à 6 candidats qui répondent le mieux à l\'envie, du meilleur au moins bon. Réponds uniquement par {"picks":[{"id":"…","why":"raison en français, 18 mots maximum"}]}. ' +
@@ -270,4 +278,34 @@ async function envies(state, text, me) {
   };
 }
 
-module.exports = { suggestions, envies, pmap, region, platformsOf };
+// --- « Bientôt » : sorties à venir proches de vos goûts ---
+async function upcoming(state, me) {
+  const reg = region(state), plats = platformsOf(state);
+  const maps = await tmdb.genreMaps();
+  const liked = {};
+  state.list.forEach((e) => {
+    const w = e.status === "seen" ? rating(state, e.r && e.r[me]) : (e.by === me ? 1 : 0.4);
+    if (w > 0) (e.g || []).forEach((g) => { liked[g] = (liked[g] || 0) + w; });
+  });
+  const top = Object.keys(liked).sort((a, b) => liked[b] - liked[a]).slice(0, 4);
+  const dismissed = new Set((state.dismissed && state.dismissed[me]) || []);
+  const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  const pools = await pmap(["movie", "tv"], 2, (media) => {
+    const ids = top.map((n) => maps.byName[n.toLowerCase()] && maps.byName[n.toLowerCase()][media]).filter(Boolean);
+    const p = { region: reg, "vote_count.gte": "0", sort_by: "popularity.desc" };
+    if (ids.length) p.with_genres = ids.join("|");
+    if (media === "movie") { p["primary_release_date.gte"] = day(1); p["primary_release_date.lte"] = day(150); p.with_release_type = "2|3"; }
+    else { p["first_air_date.gte"] = day(1); p["first_air_date.lte"] = day(150); }
+    return tmdb.discover(media, p);
+  });
+  const out = [];
+  pools.filter(Boolean).forEach((arr) => arr.slice(0, 12).forEach((it) => {
+    if (!it.date || it.date <= day(0) || inList(state, it.id) || dismissed.has(it.id)) return;
+    const shared = (it.g || []).filter((g) => liked[g]);
+    out.push({ item: it, s: shared.reduce((a, g) => a + liked[g], 0), why: shared.length ? "Genres que vous aimez : " + shared.slice(0, 2).join(", ").toLowerCase() : "Très attendu" });
+  }));
+  out.sort((a, b) => b.s - a.s || a.item.date.localeCompare(b.item.date));
+  return out.slice(0, 12).map((x) => ({ item: x.item, why: x.why }));
+}
+
+module.exports = { suggestions, envies, upcoming, rating, pmap, region, platformsOf };

@@ -2,8 +2,9 @@
 // - Fichiers de l'interface : réseau d'abord, copie en cache si le réseau manque ou traîne plus de 4 s.
 // - Polices Google et affiches TMDB : cache d'abord.
 // - /api/… : jamais touché ici ; l'app garde elle-même ses données (localStorage) et les synchronise au retour du réseau.
+// - Notifications push : affichage et ouverture de l'appli au toucher.
 // Changer VERSION quand la liste FILES change.
-var VERSION = 'mw-v1';
+var VERSION = 'mw-v2';
 var FILES = ['./', 'index.html', 'app.js', 'styles.css', 'manifest.json', 'logo.svg', 'logo.png', 'icon-192.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
 var TIMEOUT_MS = 4000;
 var MEDIA_CACHE = 'mw-media';
@@ -58,4 +59,21 @@ self.addEventListener('fetch', function (e) {
       });
     }));
   }
+});
+
+self.addEventListener('push', function (e) {
+  var data = {};
+  try { data = e.data ? e.data.json() : {}; } catch (err) {}
+  e.waitUntil(self.registration.showNotification(data.title || 'mAIwatch', {
+    body: data.body || '', icon: 'icon-192.png', badge: 'icon-192.png', tag: data.tag || 'maiwatch', data: { url: data.url || './' }
+  }));
+});
+
+self.addEventListener('notificationclick', function (e) {
+  e.notification.close();
+  var url = (e.notification.data && e.notification.data.url) || './';
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+    for (var i = 0; i < list.length; i++) { if ('focus' in list[i]) return list[i].focus(); }
+    return self.clients.openWindow(url);
+  }));
 });

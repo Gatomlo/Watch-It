@@ -21,10 +21,20 @@
   function clone(o) { return o == null ? o : JSON.parse(JSON.stringify(o)); }
   function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
   function todayISO() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
-  function fmtDate(d) { var a = String(d).split('-'); return (+a[2]) + ' ' + MON[+a[1] - 1]; }
+  function fmtDate(d) { var a = String(d).split('-'); return (+a[2]) + ' ' + MON[+a[1] - 1] + (+a[0] !== new Date().getFullYear() ? ' ' + a[0] : ''); }
   function daysSince(d) { return Math.floor((Date.now() - Date.parse(d)) / 86400000); }
   function fmtLen(m) { var h = Math.floor(m / 60), r = m % 60; return h ? h + ' h' + (r ? ' ' + (r < 10 ? '0' : '') + r : '') : r + ' min'; }
   function hueOf(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
+
+  // Thème : sombre (défaut), clair ou auto ; mémorisé sur l'appareil.
+  var THEME = 'dark';
+  try { THEME = localStorage.getItem('maiwatch-theme') || 'dark'; } catch (e) {}
+  function applyTheme() {
+    document.documentElement.setAttribute('data-theme', THEME);
+    var light = THEME === 'light' || (THEME === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+    var m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', light ? '#f7f1ea' : '#17141a');
+  }
+  applyTheme();
 
   var ico = {
     back: '<path d="M15 5l-7 7 7 7"/>',
@@ -37,6 +47,7 @@
     trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>', share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/>',
     dl: '<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>', ul: '<path d="M12 15V3M7 8l5-5 5 5M4 20h16"/>', chev: '<path d="M9 5l7 7-7 7"/>',
     file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5"/>', out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+    star: '<path d="M12 2.8l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.7 6.1 21l1.2-6.6L2.5 9.8l6.6-.9z"/>',
     filter: '<path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h11M21 18h-1"/><circle cx="16" cy="6" r="2.2"/><circle cx="10" cy="12" r="2.2"/><circle cx="17.5" cy="18" r="2.2"/>'
   };
   function I(n, cls) { return '<svg class="ico ' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true">' + ico[n] + '</svg>'; }
@@ -58,11 +69,12 @@
   var ui = {
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
     tab: 'me', sug: {}, sugVer: 0, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
-    impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false
+    impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false,
+    soon: null, cs: 'envie', matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
   };
   var booted = false, isAuthenticated = false, currentUsername = '';
 
-  function defaultState() { return { settings: { region: 'BE', platforms: [], profiles: { M: 'Moi', E: 'Elle' } }, list: [], dismissed: { M: [], E: [] } }; }
+  function defaultState() { return { settings: { region: 'BE', platforms: [], profiles: { M: 'Moi', E: 'Elle' }, ratingScale: 5 }, list: [], dismissed: { M: [], E: [] }, match: null }; }
   function migrate(s) {
     s = s || defaultState();
     s.settings = s.settings || {};
@@ -71,6 +83,7 @@
     s.settings.profiles = Object.assign({ M: 'Moi', E: 'Elle' }, s.settings.profiles || {});
     s.list = s.list || [];
     s.dismissed = Object.assign({ M: [], E: [] }, s.dismissed || {});
+    s.match = s.match || null;
     return s;
   }
   function pname(u) { return (S && S.settings.profiles[u]) || (u === 'M' ? 'Moi' : 'Elle'); }
@@ -79,7 +92,10 @@
   function entry(id) { for (var i = 0; i < S.list.length; i++) if (S.list[i].id === id) return S.list[i]; return null; }
   function know(it) { if (it && it.id) KNOWN[it.id] = Object.assign(KNOWN[it.id] || {}, it); return it; }
   function lite(it) {
-    return { id: it.id, ty: it.ty, t: it.t, y: it.y || null, p: it.p || null, g: it.g || [], len: it.len || null };
+    var o = { id: it.id, ty: it.ty, t: it.t, y: it.y || null, p: it.p || null, g: it.g || [], len: it.len || null };
+    var dt = it.date || it.d;
+    if (dt && dt > todayISO()) o.d = dt;
+    return o;
   }
   function addEntry(it, status) {
     var e = Object.assign(lite(it), { by: me, at: todayISO(), status: status || 'todo', r: {}, note: '' });
@@ -311,11 +327,39 @@
     if (e && e.alert && daysSince(e.alert.at) <= 21 && e.status === 'todo') {
       h += e.alert.k === 'gone' ? '<span class="badge warn">N’est plus sur ' + esc(pnameOf(e.alert.p)) + '</span>' : '<span class="badge ok">Nouveau sur ' + esc(pnameOf(e.alert.p)) + '</span>';
     }
+    if (e && e.status === 'todo' && it.d && it.d > todayISO()) h += '<span class="badge soft">Sortie le ' + fmtDate(it.d) + '</span>';
+    if (e && e.status === 'todo' && it.ty === 'serie') h += progBadge(e, a);
+    var soon = !!(it.d && it.d > todayISO());
+    if (soon) return '<div class="badges">' + h + '</div>';
     if (!a) h += '<span class="badge mut">Plateformes…</span>';
     else if (!mine.length) h += a.f.length ? '<span class="badge mut">Sur d’autres plateformes</span>' : (a.r.length || a.b.length ? '<span class="badge warn">Location ou achat</span>' : '<span class="badge warn">Pas en streaming</span>');
     if (a) h += a.trailer ? '<span class="badge soft">▶ Bande-annonce</span>' : '<span class="badge mut">Sans bande-annonce</span>';
     return '<div class="badges">' + h + '</div>';
   }
+  function starRow(cur, act, attrs, cls) {
+    var h = '';
+    for (var i = 1; i <= 5; i++) h += '<button class="star' + (cur >= i ? ' on' : '') + '" data-act="' + act + '" ' + attrs + ' data-v="' + i + '" aria-label="' + i + ' étoile' + (i > 1 ? 's' : '') + '" aria-pressed="' + (cur === i) + '">' + I('star') + '</button>';
+    return '<div class="stars ' + (cls || '') + '" role="group" aria-label="Note">' + h + '</div>';
+  }
+  // Suivi des séries : e.prog = { s, e } = dernier épisode vu ; a = infos TMDB { se:[{n,c}], last, next, ended }.
+  function nextEp(e, a) {
+    var se = a && a.se; if (!se || !se.length) return null;
+    var p = e.prog || {}, cnt = {}; se.forEach(function (x) { cnt[x.n] = x.c; });
+    if (!p.s) return { s: se[0].n, e: 1 };
+    var s2 = p.s, ep = (p.e || 0) + 1;
+    if (cnt[s2] && ep > cnt[s2]) { var nx = se.filter(function (x) { return x.n > s2; })[0]; if (!nx) return null; s2 = nx.n; ep = 1; }
+    return { s: s2, e: ep };
+  }
+  function airedUpTo(a, n) { if (!a || !a.last) return true; return n.s < a.last.s || (n.s === a.last.s && n.e <= a.last.e); }
+  function progBadge(e, a) {
+    if (!a || !a.se || !e.prog || !e.prog.s) return '';
+    var n = nextEp(e, a);
+    if (n && airedUpTo(a, n)) return '<span class="badge go">Reprendre : S' + n.s + 'E' + n.e + '</span>';
+    if (a.next && a.next.date) return '<span class="badge soft">Prochain épisode le ' + fmtDate(a.next.date) + '</span>';
+    if (!n && a.ended) return '<span class="badge ok">Terminée : à marquer comme vue</span>';
+    return '<span class="badge soft">À jour : S' + e.prog.s + 'E' + e.prog.e + '</span>';
+  }
+
   function ava(u) { return '<span class="ava ' + u + '" aria-label="Ajouté par ' + esc(pname(u)) + '">' + esc(initial(u)) + '</span>'; }
   function rowHtml(it, e) {
     return '<button class="row" data-act="open" data-id="' + esc(it.id) + '">' + poster(it) + '<span class="rb"><span class="rt"><span class="title">' + esc(it.t) + '</span>' + (e ? ava(e.by) : '') + '</span><span class="meta">' + meta(it) + '</span>' + badges(it) + '</span></button>';
@@ -407,7 +451,7 @@
   V.seen = function () {
     var all = S.list.filter(function (e) { return e.status === 'seen'; }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
     var seen = all.filter(function (e) { return passes(e); });
-    function th(e, u) { var r = e.r[u]; return '<span class="badge' + (r ? '' : ' mut') + '">' + esc(initial(u)) + ' ' + (r === 1 ? '👍' : r === -1 ? '👎' : 'pas noté') + '</span>'; }
+    function th(e, u) { var r = e.r[u]; return '<span class="badge' + (r ? '' : ' mut') + '">' + esc(initial(u)) + ' ' + (r ? '★ ' + r : 'pas noté') + '</span>'; }
     return header('Vus', all.length + ' titre' + (all.length > 1 ? 's' : '') + ' · vos notes alimentent les suggestions') + filterBar() +
       (seen.length ? '<div class="list">' + seen.map(function (e) {
         return '<button class="row" data-act="open" data-id="' + esc(e.id) + '">' + poster(e) + '<span class="rb"><span class="title">' + esc(e.t) + '</span><span class="meta">' + meta(e) + '</span><span class="badges">' + th(e, 'M') + th(e, 'E') + '</span></span></button>';
@@ -420,7 +464,7 @@
     var yt = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(it.t + ' bande-annonce');
     var tr = d && d.trailer ? 'https://www.youtube.com/watch?v=' + encodeURIComponent(d.trailer) : null;
     var h = hueOf(it.t);
-    var hero = '<div class="hero" style="background:' + (it.p ? 'linear-gradient(180deg,rgba(23,20,26,.25),var(--bg)),url(' + IMG + 'w780' + esc(it.p) + ') center/cover' : 'linear-gradient(170deg,hsl(' + h + ' 38% 36%) 0%,hsl(' + h + ' 22% 18%) 55%,var(--bg) 100%)') + '">' + back() +
+    var hero = '<div class="hero" style="background:' + (it.p ? 'linear-gradient(180deg,var(--shade),var(--bg)),url(' + IMG + 'w780' + esc(it.p) + ') center/cover' : 'linear-gradient(170deg,hsl(' + h + ' 38% 36%) 0%,hsl(' + h + ' 22% 18%) 55%,var(--bg) 100%)') + '">' + back() +
       (tr ? '<a class="play" href="' + tr + '" target="_blank" rel="noopener" aria-label="Voir la bande-annonce">' + I('play') + '</a><span class="hl">Bande-annonce</span>'
         : (d ? '<span class="hl">Pas de bande-annonce trouvée · <a href="' + yt + '" target="_blank" rel="noopener">chercher sur YouTube</a></span>' : '')) + '</div>';
     var where = '';
@@ -439,9 +483,21 @@
     var rates = '';
     if (e && e.status === 'seen') {
       rates = '<div class="group"><h2>Notre avis</h2>' + ['M', 'E'].map(function (u) {
-        var r = e.r[u];
-        return '<div class="card"><span class="ava ' + u + '">' + esc(initial(u)) + '</span><span class="ct"><b>' + esc(pname(u)) + '</b></span><button class="thumb up' + (r === 1 ? ' on' : '') + '" data-act="setr" data-id="' + esc(id) + '" data-u="' + u + '" data-v="1" aria-label="' + esc(pname(u)) + ' a aimé" aria-pressed="' + (r === 1) + '">' + I('up') + '</button><button class="thumb down' + (r === -1 ? ' on' : '') + '" data-act="setr" data-id="' + esc(id) + '" data-u="' + u + '" data-v="-1" aria-label="' + esc(pname(u)) + ' n’a pas aimé" aria-pressed="' + (r === -1) + '">' + I('up') + '</button></div>';
+        return '<div class="card"><span class="ava ' + u + '">' + esc(initial(u)) + '</span><span class="ct"><b>' + esc(pname(u)) + '</b></span>' + starRow(e.r[u] || 0, 'setr', 'data-id="' + esc(id) + '" data-u="' + u + '"', 'sm') + '</div>';
       }).join('') + '</div>';
+    }
+    var prog = '';
+    if (e && e.ty === 'serie' && e.status === 'todo') {
+      var a2 = d ? { se: d.seasonsInfo, last: d.lastEp, next: d.nextEp, ended: d.ended } : AV[id];
+      if (a2 && a2.se && a2.se.length) {
+        var p0 = e.prog || {}, nx = nextEp(e, a2), cnt = a2.se.filter(function (x) { return x.n === p0.s; })[0];
+        var sOpts = '<option value="0"' + (!p0.s ? ' selected' : '') + '>Pas commencée</option>' + a2.se.map(function (x) { return '<option value="' + x.n + '"' + (x.n === p0.s ? ' selected' : '') + '>Saison ' + x.n + '</option>'; }).join('');
+        var eOpts = '';
+        if (cnt) { eOpts = '<option value="0"' + (!p0.e ? ' selected' : '') + '>Aucun épisode vu</option>'; for (var i = 1; i <= cnt.c; i++) eOpts += '<option value="' + i + '"' + (i === p0.e ? ' selected' : '') + '>Épisode ' + i + '</option>'; }
+        var note2 = nx ? (airedUpTo(a2, nx) ? '' : '<span class="help">' + (a2.next && a2.next.date ? 'Prochain épisode le ' + esc(fmtDate(a2.next.date)) + '.' : 'Pas d’épisode de plus disponible pour l’instant.') + '</span>') : '<span class="help">' + (a2.ended ? 'Vous avez tout vu : marquez la série comme vue.' : 'À jour. ' + (a2.next && a2.next.date ? 'Prochain épisode le ' + esc(fmtDate(a2.next.date)) + '.' : '')) + '</span>';
+        prog = '<div class="group"><h2>Où j’en suis</h2><div class="prog"><label for="prog-s" style="position:absolute;left:-9999px">Saison</label><select id="prog-s" class="fld">' + sOpts + '</select>' + (cnt ? '<label for="prog-e" style="position:absolute;left:-9999px">Épisode</label><select id="prog-e" class="fld">' + eOpts + '</select>' : '') + '</div>' +
+          (nx && airedUpTo(a2, nx) ? '<button class="btn" data-act="epnext" data-id="' + esc(id) + '">J’ai vu S' + nx.s + 'E' + nx.e + '</button>' : '') + note2 + '</div>';
+      }
     }
     var note = e ? '<div class="group"><h2>Notre note</h2><label for="note" style="position:absolute;left:-9999px">Note sur ce titre</label><textarea id="note" class="ta" rows="2" placeholder="Pourquoi on veut le voir, qui l’a conseillé…" data-note="' + esc(id) + '">' + esc(e.note || '') + '</textarea><span class="help">Ajouté par ' + esc(pname(e.by)) + ' le ' + fmtDate(e.at) + '</span></div>' : '';
     var dock;
@@ -452,7 +508,7 @@
     var gen = (it.g || []).join(', ');
     return hero + '<div class="group" style="gap:6px;margin-top:-6px"><h1>' + esc(it.t) + '</h1><span class="meta">' + meta(it) + (gen ? ' · ' + esc(gen) : '') + '</span></div>' +
       (d && d.ov ? '<p class="syn">' + esc(d.ov) + '</p>' : (d ? '' : '<div class="skel" style="height:72px"></div>')) +
-      '<div class="group"><div class="sec"><h2>Où le voir</h2><span class="help">Source : TMDB / JustWatch</span></div>' + where + '</div>' + rates + note + '<div class="dock">' + dock + '</div>';
+      '<div class="group"><div class="sec"><h2>Où le voir</h2><span class="help">Source : TMDB / JustWatch</span></div>' + where + '</div>' + prog + rates + note + '<div class="dock">' + dock + '</div>';
   };
 
   function addResults() {
@@ -488,11 +544,37 @@
       if (ui.screen === 'sug') safeRender();
     });
   }
+  function soonState() {
+    var s = ui.soon;
+    if (!s || s.ver !== ui.sugVer) { if (!s || s.st !== 'loading') loadSoon(); s = ui.soon; }
+    return s;
+  }
+  function loadSoon() {
+    var ver = ui.sugVer;
+    ui.soon = Object.assign({}, ui.soon || {}, { st: 'loading', ver: ver, items: (ui.soon && ui.soon.items) || null });
+    api('/api/upcoming?me=' + me).then(function (items) {
+      items.forEach(function (x) { know(x.item); });
+      ui.soon = { st: 'ok', ver: ver, items: items };
+    }).catch(function (e) { ui.soon = { st: 'err', ver: ver, err: e.message, items: null }; }).finally(function () { if (ui.screen === 'sug') safeRender(); });
+  }
   V.sug = function () {
-    var ot = other(me), tabs = [['me', pname(me)], ['other', pname(ot)], ['both', 'Nous deux']];
-    var s = sugState(), body;
+    var ot = other(me), tabs = [['me', pname(me)], ['other', pname(ot)], ['both', 'Nous deux'], ['soon', 'Bientôt']];
+    var seg = '<div class="seg" role="tablist">' + tabs.map(function (t) { return '<button class="chip" style="padding:0 6px;font-size:13px;' + (ui.tab === t[0] ? 'background:var(--accent);border-color:var(--accent);color:var(--ink);font-weight:700' : '') + '" role="tab" aria-selected="' + (ui.tab === t[0]) + '" data-act="tab" data-v="' + t[0] + '">' + (t[0] === 'both' || t[0] === 'soon' ? esc(t[1]) : esc(t[1])) + '</button>'; }).join('') + '</div>';
+    var body = '';
+    if (ui.tab === 'soon') {
+      var so = soonState(), cards;
+      if (!CFG.tmdb) body += noTmdb();
+      if (so && so.st === 'err') cards = errBox(so.err, 'retrysoon');
+      else if (!so || (so.st === 'loading' && !so.items)) cards = skeletons(3);
+      else cards = (so.items.length ? '<div class="list" style="gap:14px">' + so.items.map(function (x) {
+        var it = x.item;
+        return '<div class="sug"><button class="row" style="gap:12px" data-act="open" data-id="' + esc(it.id) + '">' + poster(it, 'sm') + '<span class="rb"><span class="title" style="font-size:16px">' + esc(it.t) + '</span><span class="meta" style="font-size:12px">' + meta(it) + '</span><span class="badges"><span class="badge go">Sortie le ' + esc(fmtDate(it.date)) + '</span></span><span class="why">' + esc(x.why) + '</span></span></button></div>' +
+          '<div style="display:flex;gap:8px;margin:-6px 0 0 64px;flex-wrap:wrap"><button class="chip" style="height:44px;padding:0 14px;background:var(--accent);border-color:var(--accent);color:var(--ink);font-weight:800" data-act="add" data-id="' + esc(it.id) + '">' + I('plus') + 'Ajouter à voir</button><button class="chip" style="height:44px;padding:0 14px;color:var(--muted)" data-act="dismiss" data-id="' + esc(it.id) + '">Pas pour moi</button></div>';
+      }).join('') + '</div>' : '<div class="empty">Rien de prévu qui corresponde à vos goûts pour le moment.</div>');
+      return header('Pour vous', 'Sorties à venir proches de vos goûts') + seg + '<p class="help" style="margin:0">Dans les 5 prochains mois, selon vos genres préférés (' + esc(pname(me)) + ').</p>' + body + cards;
+    }
+    var s = sugState();
     if (!platsOn().length) body = '<div class="notice"><b>Choisissez vos plateformes</b> dans les <button class="link" style="padding:0;min-height:0;color:var(--fg)" data-act="push" data-to="settings">réglages</button> : les suggestions se limitent à ce que vous pouvez regarder.</div>';
-    else body = '';
     if (!CFG.tmdb) body += noTmdb();
     var cards = '';
     if (s && s.st === 'err') cards = errBox(s.err, 'retrysug');
@@ -503,7 +585,6 @@
       var dis = ui.tab === 'both' ? 'Pas pour nous' : 'Pas pour ' + pname(ui.tab === 'me' ? me : ot).toLowerCase();
       var card = function (x) {
         var it = x.item;
-        var a = { f: it.av.f, r: it.av.r, b: it.av.b, trailer: !!it.trailer };
         return '<div class="sug"><button class="row" style="gap:12px" data-act="open" data-id="' + esc(it.id) + '">' + poster(it, 'sm') + '<span class="rb"><span class="title" style="font-size:16px">' + esc(it.t) + '</span><span class="meta" style="font-size:12px">' + meta(it) + '</span><span class="badges">' + it.av.f.filter(function (p) { return platsOn().indexOf(p) >= 0; }).map(platBadge).join('') + '</span><span class="why">' + reasonHtml(x.why) + '</span></span></button></div>' +
           acts(it.id, '<button class="chip" style="height:44px;padding:0 14px;color:var(--muted)" data-act="dismiss" data-id="' + esc(it.id) + '">' + esc(dis) + '</button>');
       };
@@ -511,13 +592,43 @@
         (fresh.length ? '<h2 style="margin-top:6px">Récent sur vos plateformes</h2><div class="list" style="gap:14px">' + fresh.slice(0, 4).map(card).join('') + '</div>' : '');
       if (s.st === 'loading') cards = '<div aria-busy="true" style="opacity:.6">' + cards + '</div>';
     }
-    return header('Pour vous', 'Selon ce que vous avez aimé et ajouté') +
-      '<div class="seg" role="tablist">' + tabs.map(function (t) { return '<button class="chip' + (ui.tab === t[0] ? ' on' : '') + '" role="tab" aria-selected="' + (ui.tab === t[0]) + '" data-act="tab" data-v="' + t[0] + '">' + (t[0] === 'both' ? t[1] : 'Pour ' + esc(t[1]).toLowerCase()) + '</button>'; }).join('') + '</div>' +
-      (ui.tab === 'both' ? '<p class="help" style="margin:0">Titres qui plaisent aux deux profils.</p>' : '') + body + filterBar() + cards;
+    return header('Pour vous', 'Selon ce que vous avez aimé et ajouté') + seg + (ui.tab === 'both' ? '<p class="help" style="margin:0">Titres qui plaisent aux deux profils.</p>' : '') + body + filterBar() + cards;
   };
 
+  function matchMine(m) { return (m.votes && m.votes[me]) || {}; }
+  function matchCur(m) { var v = matchMine(m); for (var i = 0; i < m.deck.length; i++) if (!v[m.deck[i].id]) return m.deck[i]; return null; }
+  function matchResults(m) { var a = (m.votes && m.votes.M) || {}, b = (m.votes && m.votes.E) || {}; return m.deck.filter(function (c) { return a[c.id] === 1 && b[c.id] === 1; }); }
+  function matchDone(m, u) { var v = (m.votes && m.votes[u]) || {}; return m.deck.every(function (c) { return v[c.id]; }); }
+  function matchView() {
+    var m = S.match, ot = other(me), h = '';
+    if (ui.matchBusy) return skeletons(2);
+    if (!m) {
+      return '<div class="notice"><b>Match à deux.</b> Chacun de son côté (sur son téléphone), vous balayez une même sélection de titres : « Envie » ou « Pas envie ». Les titres que vous voulez tous les deux apparaissent ici.</div>' +
+        '<button class="btn" data-act="matchstart">Lancer une partie</button><span class="help">La sélection mélange votre liste « À voir » et des suggestions pour vous deux, sur vos plateformes.</span>';
+    }
+    var cur = matchCur(m), res = matchResults(m), voted = m.deck.filter(function (c) { return matchMine(m)[c.id]; }).length;
+    if (cur) {
+      var av = (cur.f || []).filter(function (p) { return platsOn().indexOf(p) >= 0; });
+      h += '<span class="help" style="text-align:center">Titre ' + (voted + 1) + ' sur ' + m.deck.length + ' · vous votez en tant que ' + esc(pname(me)) + '</span>' +
+        '<div class="mcard"><div class="mp" style="background:linear-gradient(160deg,hsl(' + hueOf(cur.t) + ' 38% 36%),hsl(' + hueOf(cur.t) + ' 24% 13%))">' + (cur.p ? '<img src="' + IMG + 'w342' + esc(cur.p) + '" alt="" onerror="this.remove()">' : '') + '<span>' + esc(cur.t.charAt(0)) + '</span></div>' +
+        '<h2 style="font-family:var(--display);font-size:24px;font-weight:800;letter-spacing:-.01em;line-height:1.15;text-transform:none;color:var(--fg)">' + esc(cur.t) + '</h2><span class="meta">' + meta(cur) + (cur.g && cur.g.length ? ' · ' + esc(cur.g.slice(0, 2).join(', ')) : '') + '</span>' +
+        '<div class="badges" style="justify-content:center">' + av.map(platBadge).join('') + '</div>' +
+        '<div class="mact"><button class="btn ghost" data-act="matchvote" data-id="' + esc(cur.id) + '" data-v="-1">Pas envie</button><button class="btn" data-act="matchvote" data-id="' + esc(cur.id) + '" data-v="1">Envie</button></div></div>';
+    } else {
+      h += '<div class="notice"><b>Vous avez tout balayé.</b> ' + (matchDone(m, ot) ? 'Partie terminée.' : 'En attente de ' + esc(pname(ot)) + ' (' + m.deck.filter(function (c) { return ((m.votes[ot] || {})[c.id]); }).length + ' sur ' + m.deck.length + ').') + '</div>';
+    }
+    h += '<div class="group"><div class="sec"><h2>Matchs</h2><span class="mbad">' + res.length + '</span></div>' + (res.length ? res.map(function (c) {
+      var inL = entry(c.id);
+      return '<div class="sug" style="align-items:center"><button class="row" style="gap:12px;align-items:center" data-act="open" data-id="' + esc(c.id) + '">' + poster(c, 'sm') + '<span class="rb"><span class="title" style="font-size:16px">' + esc(c.t) + '</span><span class="meta" style="font-size:12px">' + meta(c) + '</span></span></button>' +
+        (inL ? '<span class="st ok">Dans la liste</span>' : '<button class="round" data-act="matchadd" data-id="' + esc(c.id) + '" aria-label="Ajouter ' + esc(c.t) + ' à la liste">' + I('plus') + '</button>') + '</div>';
+    }).join('') : '<div class="empty">Pas encore de titre voulu par vous deux.</div>') + '</div>' +
+      '<button class="btn ghost" style="height:44px" data-act="matchstart">Nouvelle partie</button>';
+    return h;
+  }
+
   V.envies = function () {
-    var ai = CFG.ai.hasKey && CFG.ai.tested;
+    var csw = '<div class="seg" role="tablist">' + [['envie', 'Une envie'], ['match', 'Match à deux']].map(function (t) { return '<button class="chip' + (ui.cs === t[0] ? ' on' : '') + '" role="tab" aria-selected="' + (ui.cs === t[0]) + '" data-act="cs" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+    if (ui.cs === 'match') return header('Ce soir', '') + csw + (!CFG.tmdb ? noTmdb() : '') + matchView();
     var chips = ['Cosy', 'Frissons sans gore', 'Un épisode de 40 min'].map(function (t) { return '<button class="chip" style="height:36px;padding:0 14px;font-size:13px;color:var(--soft)" data-act="chip" data-v="' + esc(t) + '">' + t + '</button>'; }).join('');
     var r = ui.env, out = '';
     if (ui.envBusy) out = '<div class="spin">' + (CFG.ai.hasKey ? esc(PROVS[CFG.ai.provider]) + ' réfléchit…' : 'Recherche…') + '</div>' + skeletons(2);
@@ -533,13 +644,21 @@
         (r.fresh.length ? '<h2 style="margin-top:6px">Nouvelles suggestions</h2><div class="list" style="gap:14px">' + r.fresh.map(function (x) { know(x.item); return one(x.item, x.why, !entry(x.item.id)); }).join('') + '</div>' : '') +
         (!mine.length && !r.fresh.length ? '<div class="empty">Rien ne correspond exactement. Essayez d’assouplir une contrainte (durée, ton).</div>' : '');
     }
-    return header('Ce soir', '') + (!CFG.tmdb ? noTmdb() : '') +
+    return header('Ce soir', '') + csw + (!CFG.tmdb ? noTmdb() : '') +
       '<label for="envie" style="position:absolute;left:-9999px">Décrivez votre envie</label><textarea id="envie" class="ta hi" rows="3" placeholder="Quelque chose de léger, moins de 2 h, qui ne fait pas trop peur…">' + esc(ui.envie) + '</textarea>' +
       '<div class="chips scroll">' + chips + '</div>' +
       '<div style="display:flex;gap:10px;align-items:center"><button class="btn" data-act="envie"' + (ui.envBusy ? ' disabled' : '') + '>Trouver</button><span class="help" style="flex:none;text-align:right">' + (CFG.ai.hasKey ? 'via ' + esc(PROVS[CFG.ai.provider]) : 'mots-clés') + '<br>vos plateformes</span></div>' +
       (!CFG.ai.hasKey ? '<div class="tip">' + I('spark') + '<span>Sans clé API, la recherche repère des mots-clés (durée, ton, série ou film). Ajoutez une clé dans les <button class="link" style="padding:0;min-height:0;color:var(--fg)" data-act="push" data-to="settings">réglages</button> pour décrire librement vos envies.</span></div>' : '') + out;
   };
 
+  function pushSection() {
+    var P = ui.push, lbl, btns = '', help;
+    if (P.st === 'unsupported') { lbl = '<span class="st no">Indisponible</span>'; help = 'Ce navigateur ne gère pas les notifications. Sur iPhone, ajoutez d’abord l’appli à l’écran d’accueil.'; }
+    else if (P.st === 'denied') { lbl = '<span class="st bad">Bloquées</span>'; help = 'Les notifications sont bloquées pour ce site : autorisez-les dans les réglages du navigateur.'; }
+    else if (P.st === 'on') { lbl = '<span class="st ok">Activées</span>'; help = 'Vous serez prévenu quand un titre de votre liste quitte l’une de vos plateformes (vérification toutes les 6 h).'; btns = '<button class="btn ghost" style="height:44px" data-act="pushtest">Envoyer un test</button><button class="btn ghost" style="height:44px" data-act="pushoff">Désactiver</button>'; }
+    else { lbl = '<span class="st no">Désactivées</span>'; help = 'Recevez une notification quand un titre de votre liste quitte l’une de vos plateformes. À activer sur chaque appareil.'; btns = '<button class="btn ghost" style="height:44px" data-act="pushon">Activer sur cet appareil</button>'; }
+    return '<div class="group"><div class="sec"><h2>Notifications</h2>' + lbl + '</div>' + (btns ? '<div style="display:flex;gap:10px">' + btns + '</div>' : '') + (P.msg ? '<div class="notice" role="status">' + esc(P.msg) + '</div>' : '') + '<span class="help">' + help + '</span></div>';
+  }
   V.settings = function () {
     var A = CFG.ai;
     var st = A.hasKey ? (A.tested ? '<span class="st ok">Clé testée</span>' : '<span class="st no">Non testée</span>') : '<span class="st no">Aucune clé</span>';
@@ -564,6 +683,8 @@
       '<div style="display:flex;gap:10px"><button class="btn ghost" style="height:44px" data-act="aisave"' + (ui.aiBusy ? ' disabled' : '') + '>' + (ui.aiBusy ? 'Test en cours…' : 'Enregistrer et tester') + '</button>' + (A.hasKey ? '<button class="btn ghost" style="height:44px" data-act="aiclear">Retirer la clé</button>' : '') + '</div>' +
       (ui.aiMsg ? '<div class="notice" role="status">' + esc(ui.aiMsg) + '</div>' : '') +
       '<span class="help">Facultatif. La clé reste sur votre serveur, chiffrée : le navigateur ne la revoit jamais. Elle sert à comprendre vos envies et à classer des titres choisis par TMDB. Chaque recherche « Ce soir » envoie votre phrase et une courte liste de titres au fournisseur choisi.</span></div>' +
+      '<div class="group"><h2>Apparence</h2><div class="seg">' + [['dark', 'Sombre'], ['light', 'Clair'], ['auto', 'Auto']].map(function (t) { return '<button class="chip' + (THEME === t[0] ? ' on' : '') + '" data-act="theme" data-v="' + t[0] + '" aria-pressed="' + (THEME === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</div></div>' +
+      pushSection() +
       '<div class="group"><h2>Données</h2><div class="menu"><button class="mi" data-act="push" data-to="import">' + I('dl').replace('class="ico "', 'class="ico" style="stroke:var(--accent)"') + '<span class="ct"><b>Importer nos films et séries vus</b><span>Pour que les suggestions nous ressemblent dès le départ</span></span>' + I('chev') + '</button>' +
       '<button class="mi" data-act="export">' + I('ul') + '<span class="ct"><b>Exporter la liste</b><span>Fichier CSV</span></span></button></div></div>' +
       '<div class="group"><h2>Compte</h2><form class="pwd" data-form="password"><input class="fld" type="password" name="cur" placeholder="Mot de passe actuel" autocomplete="current-password" required><input class="fld" type="password" name="nw" placeholder="Nouveau mot de passe (8 caractères minimum)" autocomplete="new-password" minlength="8" required><button class="btn ghost" style="height:44px" type="submit">Changer le mot de passe</button></form>' +
@@ -573,22 +694,29 @@
   };
 
   V.import = function () {
-    var modes = [['paste', 'Coller une liste'], ['csv', 'Fichier CSV'], ['hand', 'À la main']].map(function (m) { return '<button class="chip' + (ui.impMode === m[0] ? ' on' : '') + '" style="flex:1;justify-content:center;padding:0 6px;font-size:13px" data-act="impmode" data-v="' + m[0] + '">' + m[1] + '</button>'; }).join('');
+    var modes = [['paste', 'Liste'], ['csv', 'CSV'], ['lb', 'Letterboxd'], ['trakt', 'Trakt'], ['hand', 'À la main']].map(function (m) { return '<button class="chip' + (ui.impMode === m[0] ? ' on' : '') + '" style="justify-content:center;padding:0 6px;font-size:13px" data-act="impmode" data-v="' + m[0] + '">' + m[1] + '</button>'; }).join('');
     var rows = '', n = 0;
     if (ui.impBusy) rows = skeletons(3);
     else if (ui.impRows) {
       n = ui.impRows.filter(function (r) { return r.item; }).length;
-      rows = '<div class="sec"><h2>' + n + ' reconnu' + (n > 1 ? 's' : '') + ' sur ' + ui.impRows.length + ' · ' + esc(pname(me)) + '</h2></div><div class="list" style="gap:8px">' + ui.impRows.map(function (r, i) {
+      rows = '<div class="sec"><h2>' + n + ' reconnu' + (n > 1 ? 's' : '') + ' sur ' + ui.impRows.length + ' · ' + esc(pname(me)) + '</h2><button class="link" style="padding:0;min-height:44px" data-act="impbulk">★ 4 aux titres sans note</button></div><div class="list" style="gap:8px">' + ui.impRows.map(function (r, i) {
         if (!r.item) return '<div class="sug" style="align-items:center"><div class="poster xs" style="background:var(--line2)"></div><span class="rb" style="gap:2px"><span style="font-weight:700;color:var(--warn)">' + esc(r.raw) + '</span><span class="meta" style="font-size:12px;color:var(--warn)">Non reconnu · ignoré à l’import</span></span></div>';
-        var it = r.item;
-        return '<div class="sug" style="align-items:center">' + poster(it, 'xs') + '<span class="rb" style="gap:2px"><span style="font-weight:700">' + esc(it.t) + '</span><span class="meta" style="font-size:12px">' + meta(it) + '</span></span><button class="thumb up' + (r.r === 1 ? ' on' : '') + '" data-act="imprate" data-i="' + i + '" data-v="1" aria-label="J’ai aimé ' + esc(it.t) + '" aria-pressed="' + (r.r === 1) + '">' + I('up') + '</button><button class="thumb down' + (r.r === -1 ? ' on' : '') + '" data-act="imprate" data-i="' + i + '" data-v="-1" aria-label="Je n’ai pas aimé ' + esc(it.t) + '" aria-pressed="' + (r.r === -1) + '">' + I('up') + '</button></div>';
+        var it = r.item, o = '<option value="0">Pas noté</option>';
+        for (var k = 1; k <= 5; k++) o += '<option value="' + k + '"' + (r.r === k ? ' selected' : '') + '>' + '★'.repeat(k) + '</option>';
+        return '<div class="sug" style="align-items:center">' + poster(it, 'xs') + '<span class="rb" style="gap:2px"><span style="font-weight:700">' + esc(it.t) + '</span><span class="meta" style="font-size:12px">' + meta(it) + '</span></span><select class="fld" style="width:104px;flex:none" data-impr="' + i + '" aria-label="Note de ' + esc(it.t) + '">' + o + '</select></div>';
       }).join('') + '</div>';
     }
-    return '<header class="top tight">' + back() + '<h1 class="s">Importer nos titres vus</h1></header><div class="seg">' + modes + '</div>' +
-      (ui.impMode === 'hand' ? '<div class="tip">' + I('check') + '<span>Cherchez chaque titre avec le bouton +, puis marquez-le comme vu pour le noter. <button class="link" style="padding:0;min-height:0;color:var(--fg)" data-act="push" data-to="add">Ouvrir la recherche</button></span></div>' :
-        '<div class="group" style="gap:8px">' + (ui.impMode === 'csv' ? '<label class="btn ghost" for="csv" style="display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">' + I('file') + 'Choisir un fichier CSV</label><input id="csv" type="file" accept=".csv,text/csv,text/plain" style="position:absolute;left:-9999px"><span class="help">Exports Letterboxd, Trakt ou JustWatch : la colonne Name, Title ou Titre est utilisée.</span>' : '') +
-        '<label for="imp" class="help" style="line-height:1.4">Un titre par ligne. Ajoutez l’année entre parenthèses si plusieurs films portent le même nom.</label><textarea id="imp" class="ta" rows="5" style="font-size:14px">' + esc(ui.impText) + '</textarea>' +
-        '<button class="btn ghost" style="height:44px" data-act="impanalyze"' + (ui.impBusy ? ' disabled' : '') + '>Analyser la liste</button></div>') + rows +
+    var panel;
+    if (ui.impMode === 'hand') panel = '<div class="tip">' + I('check') + '<span>Cherchez chaque titre avec le bouton +, puis marquez-le comme vu pour le noter. <button class="link" style="padding:0;min-height:0;color:var(--fg)" data-act="push" data-to="add">Ouvrir la recherche</button></span></div>';
+    else if (ui.impMode === 'lb') panel = '<div class="group" style="gap:8px"><label for="lbu" class="help" style="line-height:1.4">Nom d’utilisateur Letterboxd (profil public). L’import lit les 50 derniers films du flux public ; pour tout l’historique, exportez vos données depuis Letterboxd (Paramètres > Import &amp; export) et utilisez l’onglet CSV.</label><input id="lbu" class="fld" autocomplete="off" autocapitalize="off" placeholder="monpseudo" value="' + esc(ui.lbUser) + '"><button class="btn ghost" style="height:44px" data-act="lbfetch"' + (ui.impBusy ? ' disabled' : '') + '>Récupérer mes films</button></div>';
+    else if (ui.impMode === 'trakt') {
+      panel = ui.trakt.hasKey ?
+        '<div class="group" style="gap:8px"><label for="tru" class="help">Nom d’utilisateur Trakt (profil public)</label><input id="tru" class="fld" autocomplete="off" autocapitalize="off" placeholder="monpseudo" value="' + esc(ui.trUser) + '"><button class="btn ghost" style="height:44px" data-act="traktfetch"' + (ui.impBusy ? ' disabled' : '') + '>Récupérer mes titres</button><span class="help">Client ID enregistré (…' + esc(ui.trakt.last4) + '). <button class="link" style="padding:0;min-height:0" data-act="traktclear">Retirer</button></span></div>' :
+        '<div class="group" style="gap:8px"><label for="trk" class="help" style="line-height:1.5">Trakt demande un <b style="color:var(--fg)">Client ID</b> gratuit : créez une application sur <a href="https://trakt.tv/oauth/applications/new" target="_blank" rel="noopener" style="color:var(--fg)">trakt.tv/oauth/applications</a> (Redirect URI : <code>urn:ietf:wg:oauth:2.0:oob</code>), puis collez son Client ID ici. Il est chiffré sur votre serveur.</label><input id="trk" class="kinput" type="password" autocomplete="off" placeholder="Client ID Trakt"><button class="btn ghost" style="height:44px" data-act="traktsave">Enregistrer</button></div>';
+    } else panel = '<div class="group" style="gap:8px">' + (ui.impMode === 'csv' ? '<label class="btn ghost" for="csv" style="display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">' + I('file') + 'Choisir un fichier CSV</label><input id="csv" type="file" accept=".csv,text/csv,text/plain" style="position:absolute;left:-9999px"><span class="help">Exports Letterboxd, Trakt ou JustWatch : la colonne Name, Title ou Titre est utilisée (et Rating si elle existe).</span>' : '') +
+      '<label for="imp" class="help" style="line-height:1.4">Un titre par ligne. Ajoutez l’année entre parenthèses si plusieurs films portent le même nom.</label><textarea id="imp" class="ta" rows="5" style="font-size:14px">' + esc(ui.impText) + '</textarea>' +
+      '<button class="btn ghost" style="height:44px" data-act="impanalyze"' + (ui.impBusy ? ' disabled' : '') + '>Analyser la liste</button></div>';
+    return '<header class="top tight">' + back() + '<h1 class="s">Importer nos titres vus</h1></header><div class="seg wrap">' + modes + '</div>' + panel + rows +
       (ui.impRows && !ui.impBusy ? '<div class="dock"><button class="btn" data-act="impgo"' + (n ? '' : ' disabled') + '>Importer ' + n + ' titre' + (n > 1 ? 's' : '') + '</button></div><span class="help" style="text-align:center">Les titres importés vont dans « Vus », pas dans « À voir ».</span>' : '');
   };
 
@@ -597,7 +725,7 @@
     if (s.type === 'filter') return filterSheet();
     if (s.type === 'rate') {
       var it = entry(s.id) || KNOWN[s.id]; if (!it) return '';
-      return '<div class="scrim" data-scrim="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Noter"><h3>Vous avez aimé « ' + esc(it.t) + ' » ?</h3><span class="help" style="margin-top:-8px">Votre note (' + esc(pname(me)) + ') améliore les suggestions.</span><div class="rate"><button data-act="rate" data-id="' + esc(s.id) + '" data-v="1">' + I('up') + 'Oui</button><button class="dn" data-act="rate" data-id="' + esc(s.id) + '" data-v="-1">' + I('up') + 'Non</button></div><button class="btn ghost" data-act="rate" data-id="' + esc(s.id) + '" data-v="0">Marquer vu sans noter</button></div></div>';
+      return '<div class="scrim" data-scrim="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Noter"><h3>Votre note pour « ' + esc(it.t) + ' » ?</h3><span class="help" style="margin-top:-8px">Note de ' + esc(pname(me)) + ' : elle améliore les suggestions.</span>' + starRow(0, 'rate', 'data-id="' + esc(s.id) + '"', 'big') + '<button class="btn ghost" data-act="rate" data-id="' + esc(s.id) + '" data-v="0">Marquer vu sans noter</button></div></div>';
     }
     if (s.type === 'draw') {
       var d = s.id ? entry(s.id) : null;
@@ -647,7 +775,8 @@
   function go(s, push) {
     if (push) ui.hist.push({ screen: ui.screen, detail: ui.detail }); else ui.hist = [];
     ui.screen = s; ui.sheet = null;
-    if (s === 'settings') loadProviders();
+    if (s === 'settings') { loadProviders(); refreshPush(); }
+    if (s === 'import') loadTrakt();
     render();
   }
 
@@ -710,6 +839,28 @@
     document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
 
+  function b64ToBytes(b64) {
+    var pad = '='.repeat((4 - b64.length % 4) % 4), raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/')), out = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+  function refreshPush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) { ui.push = { st: 'unsupported', endpoint: null, msg: '' }; return; }
+    if (Notification.permission === 'denied') { ui.push = { st: 'denied', endpoint: null, msg: '' }; return; }
+    navigator.serviceWorker.getRegistration().then(function (reg) { return reg ? reg.pushManager.getSubscription() : null; }).then(function (sub) {
+      ui.push = { st: sub ? 'on' : 'off', endpoint: sub ? sub.endpoint : null, msg: ui.push.msg || '' };
+      if (ui.screen === 'settings') render(true);
+    }).catch(function () { ui.push = { st: 'off', endpoint: null, msg: '' }; });
+  }
+  function loadTrakt() { api('/api/trakt-key').then(function (st) { ui.trakt = st; if (ui.screen === 'import') render(true); }).catch(function () {}); }
+  function importFrom(url, user) {
+    ui.impBusy = true; ui.impRows = null; render(true);
+    api(url, { method: 'POST', body: { user: user } }).then(function (rows) {
+      ui.impRows = rows.map(function (r) { if (r.item) know(r.item); return { raw: r.raw, item: r.item, r: r.r || 0 }; });
+      if (!rows.length) toast('Aucun titre trouvé pour ce profil.');
+    }).catch(function (e) { toast(e.message); }).finally(function () { ui.impBusy = false; render(true); });
+  }
+
   var A = {
     go: function (d) { ui.plats = []; ui.genres = []; go(d.to, false); },
     push: function (d) { go(d.to, true); },
@@ -727,6 +878,9 @@
     fexp: function () { ui.fexp = !ui.fexp; render(true); },
     closesheet: function () { ui.sheet = null; render(true); },
     tab: function (d) { ui.tab = d.v; render(true); },
+    retrysoon: function () { ui.soon = null; render(true); },
+    cs: function (d) { ui.cs = d.v; render(true); },
+    theme: function (d) { THEME = d.v; try { localStorage.setItem('maiwatch-theme', THEME); } catch (e) {} applyTheme(); render(true); },
     retrysug: function () { ui.sug[ui.tab] = null; render(true); },
     draw: function () {
       var ids = S.list.filter(function (e) { return e.status === 'todo' && passes(e) && (!availKnown(e) || !platsOn().length || avail(e).length); }).map(function (e) { return e.id; });
@@ -748,12 +902,12 @@
       save(); ui.sheet = { type: 'rate', id: d.id }; render(true);
     },
     askseen: function (d) { ui.sheet = { type: 'rate', id: d.id }; render(true); },
+    setr: function (d) { var e = entry(d.id); if (!e) return; e.r[d.u] = e.r[d.u] === +d.v ? 0 : +d.v; save(); render(true); },
     rate: function (d) {
       var e = entry(d.id); if (!e) return;
       e.status = 'seen'; e.at = todayISO(); delete e.alert; if (+d.v) e.r[me] = +d.v; save(); ui.sheet = null; render(true);
-      toast(+d.v === 1 ? 'Noté 👍 · vos suggestions s’affinent' : 'Marqué comme vu');
+      toast(+d.v ? 'Noté ' + d.v + ' ★ · vos suggestions s’affinent' : 'Marqué comme vu');
     },
-    setr: function (d) { var e = entry(d.id); if (!e) return; e.r[d.u] = e.r[d.u] === +d.v ? 0 : +d.v; save(); render(true); },
     unseen: function (d) { var e = entry(d.id); e.status = 'todo'; save(); refreshAvail(); render(true); toast('Remis dans « À voir »'); },
     remove: function (d) {
       var e = entry(d.id), i = S.list.indexOf(e); S.list.splice(i, 1); save();
@@ -761,7 +915,7 @@
       toast('Supprimé de la liste', 'Annuler', function () { S.list.splice(i, 0, e); save(); render(true); });
     },
     dismiss: function (d) {
-      var us = ui.tab === 'both' ? ['M', 'E'] : [ui.tab === 'me' ? me : other(me)];
+      var us = ui.tab === 'both' ? ['M', 'E'] : [ui.tab === 'other' ? other(me) : me];
       us.forEach(function (u) { if (S.dismissed[u].indexOf(d.id) < 0) S.dismissed[u].push(d.id); }); save(); render(true);
       toast('Compris, on en proposera moins comme celui-ci', 'Annuler', function () { us.forEach(function (u) { S.dismissed[u] = S.dismissed[u].filter(function (i) { return i !== d.id; }); }); save(); render(true); });
     },
@@ -810,18 +964,89 @@
     tmdbclear: function () {
       api('/api/tmdb-key', { method: 'DELETE' }).then(function (r) { CFG.tmdb = r.tmdb; CFG.tmdbKey = r.tmdbKey; ui.tmdbMsg = 'Clé TMDB retirée.'; render(true); }).catch(function (e) { toast(e.message); });
     },
+    epnext: function (d) {
+      var e = entry(d.id); if (!e) return;
+      var a = (ui.dd && ui.dd.id === d.id) ? { se: ui.dd.seasonsInfo, last: ui.dd.lastEp, next: ui.dd.nextEp, ended: ui.dd.ended } : AV[d.id];
+      var n = nextEp(e, a); if (!n) return;
+      e.prog = { s: n.s, e: n.e }; save();
+      var after = nextEp(e, a);
+      render(true);
+      if (!after && a && a.ended) { ui.sheet = { type: 'rate', id: d.id }; render(true); toast('Dernier épisode vu : la série est terminée.'); }
+      else toast('Épisode S' + n.s + 'E' + n.e + ' noté comme vu');
+    },
+    matchstart: function () {
+      ui.matchBusy = true; render(true);
+      var plats = platsOn();
+      var card = function (it, f) { var o = lite(it); o.f = (f || []).filter(function (p) { return !plats.length || plats.indexOf(p) >= 0; }); return o; };
+      Promise.all([api('/api/suggestions?tab=both&me=' + me).catch(function () { return []; }), api('/api/suggestions?tab=me&me=' + me).catch(function () { return []; })]).then(function (r) {
+        var pool = {};
+        S.list.forEach(function (e) { if (e.status === 'todo' && (!availKnown(e) || !plats.length || avail(e).length)) pool[e.id] = card(e, AV[e.id] && AV[e.id].f); });
+        r[0].concat(r[1]).forEach(function (x) { know(x.item); if (!pool[x.item.id]) pool[x.item.id] = card(x.item, x.item.av.f); });
+        var ids = Object.keys(pool);
+        if (ids.length < 2) { toast('Ajoutez d’abord quelques titres ou notez des films vus.'); return; }
+        for (var i = ids.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = ids[i]; ids[i] = ids[j]; ids[j] = t; }
+        S.match = { id: Date.now().toString(36), deck: ids.slice(0, 12).map(function (k) { return pool[k]; }), votes: { M: {}, E: {} }, at: todayISO() };
+        save();
+      }).finally(function () { ui.matchBusy = false; render(true); });
+    },
+    matchvote: function (d) {
+      var m = S.match; if (!m) return;
+      m.votes[me] = m.votes[me] || {}; m.votes[me][d.id] = +d.v; save(); render(true);
+      var c = m.deck.filter(function (x) { return x.id === d.id; })[0];
+      if (+d.v === 1 && ((m.votes[other(me)] || {})[d.id] === 1) && c) toast('C’est un match : « ' + c.t + ' » !');
+    },
+    matchadd: function (d) {
+      var m = S.match, c = m && m.deck.filter(function (x) { return x.id === d.id; })[0]; if (!c || entry(c.id)) return;
+      addEntry(c, 'todo'); save(); render(true); refreshAvail(); toast('« ' + c.t + ' » ajouté à la liste');
+    },
+    pushon: function () {
+      ui.push.msg = '';
+      Notification.requestPermission().then(function (perm) {
+        if (perm !== 'granted') { ui.push = { st: perm === 'denied' ? 'denied' : 'off', endpoint: null, msg: '' }; render(true); return; }
+        return Promise.all([navigator.serviceWorker.ready, api('/api/push/key')]).then(function (r) {
+          return r[0].pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(r[1].publicKey) });
+        }).then(function (sub) {
+          return api('/api/push/subscribe', { method: 'POST', body: { sub: sub.toJSON(), profile: me } }).then(function () { ui.push = { st: 'on', endpoint: sub.endpoint, msg: 'Notifications activées sur cet appareil.' }; });
+        });
+      }).catch(function (e) { ui.push.msg = 'Impossible d’activer : ' + e.message; }).finally(function () { render(true); });
+    },
+    pushoff: function () {
+      navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) {
+        if (!sub) return; var ep = sub.endpoint; return sub.unsubscribe().then(function () { return api('/api/push/unsubscribe', { method: 'POST', body: { endpoint: ep } }); });
+      }).then(function () { ui.push = { st: 'off', endpoint: null, msg: 'Notifications désactivées.' }; }).catch(function (e) { ui.push.msg = e.message; }).finally(function () { render(true); });
+    },
+    pushtest: function () {
+      api('/api/push/test', { method: 'POST', body: { endpoint: ui.push.endpoint } }).then(function (r) { ui.push.msg = r.sent ? 'Notification envoyée.' : 'Aucune notification envoyée : réactivez-les.'; }).catch(function (e) { ui.push.msg = e.message; }).finally(function () { render(true); });
+    },
+    lbfetch: function () {
+      var i = document.getElementById('lbu'); ui.lbUser = i ? i.value.trim() : ui.lbUser;
+      if (!ui.lbUser) { toast('Indiquez votre nom d’utilisateur Letterboxd.'); return; }
+      importFrom('/api/import/letterboxd', ui.lbUser);
+    },
+    traktfetch: function () {
+      var i = document.getElementById('tru'); ui.trUser = i ? i.value.trim() : ui.trUser;
+      if (!ui.trUser) { toast('Indiquez votre nom d’utilisateur Trakt.'); return; }
+      importFrom('/api/import/trakt', ui.trUser);
+    },
+    traktsave: function () {
+      var i = document.getElementById('trk'), k = i ? i.value.trim() : '';
+      if (!k) { toast('Collez d’abord le Client ID.'); return; }
+      api('/api/trakt-key', { method: 'PUT', body: { key: k } }).then(function (st) { ui.trakt = st; render(true); }).catch(function (e) { toast(e.message); });
+    },
+    traktclear: function () { api('/api/trakt-key', { method: 'DELETE' }).then(function (st) { ui.trakt = st; render(true); }).catch(function (e) { toast(e.message); }); },
+    impbulk: function () { (ui.impRows || []).forEach(function (r) { if (r.item && !r.r) r.r = 4; }); render(true); },
     syncnow: function () { syncNow(); pullState(); },
-    impmode: function (d) { ui.impMode = d.v; render(true); },
+    impmode: function (d) { ui.impMode = d.v; ui.impRows = null; if (d.v === 'trakt') loadTrakt(); render(true); },
     impanalyze: function () {
       var ta = document.getElementById('imp'); if (ta) ui.impText = ta.value;
       var lines = ui.impText.split(/\n/).map(function (l) { return l.trim(); }).filter(Boolean);
       if (!lines.length) { toast('Ajoutez au moins un titre.'); return; }
       ui.impBusy = true; ui.impRows = null; render(true);
       api('/api/import', { method: 'POST', body: { lines: lines } }).then(function (rows) {
-        ui.impRows = rows.map(function (r) { if (r.item) know(r.item); return { raw: r.raw, item: r.item, r: r.item ? 1 : 0 }; });
+        ui.impRows = rows.map(function (r) { if (r.item) know(r.item); return { raw: r.raw, item: r.item, r: (ui.impRatings && ui.impRatings[r.raw]) || r.r || 0 }; });
+        ui.impRatings = null;
       }).catch(function (e) { toast(e.message); }).finally(function () { ui.impBusy = false; render(true); });
     },
-    imprate: function (d) { var r = ui.impRows[+d.i]; r.r = r.r === +d.v ? 0 : +d.v; render(true); },
     impgo: function () {
       var n = 0;
       ui.impRows.forEach(function (r) {
@@ -853,6 +1078,14 @@
   document.addEventListener('change', function (ev) {
     var t = ev.target;
     if (t.dataset && t.dataset.prof) { var v = t.value.trim() || (t.dataset.prof === 'M' ? 'Moi' : 'Elle'); S.settings.profiles[t.dataset.prof] = v; save(); render(true); }
+    else if (t.id === 'prog-s' || t.id === 'prog-e') {
+      var pe = entry(ui.detail); if (!pe) return;
+      var ps = t.id === 'prog-s' ? Number(t.value) : (pe.prog && pe.prog.s) || 0;
+      var pp = t.id === 'prog-e' ? Number(t.value) : 0;
+      if (!ps) delete pe.prog; else pe.prog = { s: ps, e: pp };
+      save(); render(true);
+    }
+    else if (t.dataset && t.dataset.impr !== undefined) { ui.impRows[+t.dataset.impr].r = Number(t.value); render(true); }
     else if (t.id === 'region') { S.settings.region = t.value; PV = {}; S.settings.platforms = []; save(); loadProviders(true).then(function () { AV = {}; AV_AT = 0; refreshAvail(); render(true); }); }
     else if (t.id === 'csv' && t.files && t.files[0]) {
       var f = new FileReader();
@@ -863,8 +1096,10 @@
         var ix = head.findIndex(function (h) { return h === 'name' || h === 'title' || h === 'titre'; });
         var yix = head.findIndex(function (h) { return h === 'year' || h === 'année' || h === 'annee'; });
         var hasHead = ix >= 0; if (ix < 0) ix = 0;
-        var out = (hasHead ? lines.slice(1) : lines).map(function (l) { var c = split(l); return (c[ix] || '') + (yix >= 0 && c[yix] ? ' (' + c[yix] + ')' : ''); }).filter(Boolean);
-        ui.impText = out.join('\n'); ui.impMode = 'paste'; A.impanalyze();
+        var rix = head.findIndex(function (h) { return h === 'rating' || h === 'note'; });
+        var ratings = {};
+        var out = (hasHead ? lines.slice(1) : lines).map(function (l) { var c = split(l); var line = (c[ix] || '') + (yix >= 0 && c[yix] ? ' (' + c[yix] + ')' : ''); if (line && rix >= 0 && Number(c[rix]) > 0) ratings[line] = Math.min(5, Math.max(1, Math.round(Number(c[rix])))); return line; }).filter(Boolean);
+        ui.impText = out.join('\n'); ui.impMode = 'paste'; ui.impRatings = ratings; A.impanalyze();
       };
       f.readAsText(t.files[0]);
     }

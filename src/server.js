@@ -15,6 +15,8 @@ const SqliteSessionStore = require("./sessionStore");
 const tmdb = require("./tmdb");
 const ai = require("./ai");
 const engine = require("./engine");
+const importers = require("./importers");
+const push = require("./push");
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -224,7 +226,10 @@ app.post("/api/availability", requireAuth, wrap(async (req, res) => {
   const out = {};
   const list = await engine.pmap(ids, 6, (id) => tmdb.details(id, region));
   ids.forEach((id, i) => {
-    if (list[i]) out[id] = { f: list[i].av.f, r: list[i].av.r, b: list[i].av.b, trailer: !!list[i].trailer };
+    const d = list[i];
+    if (!d) return;
+    out[id] = { f: d.av.f, r: d.av.r, b: d.av.b, trailer: !!d.trailer };
+    if (d.seasonsInfo) { out[id].se = d.seasonsInfo; out[id].last = d.lastEp; out[id].next = d.nextEp; out[id].ended = d.ended; }
   });
   res.json(out);
 }));
@@ -233,6 +238,10 @@ app.get("/api/suggestions", requireAuth, wrap(async (req, res) => {
   const tab = ["me", "other", "both"].includes(req.query.tab) ? req.query.tab : "me";
   const me = req.query.me === "E" ? "E" : "M";
   res.json(await engine.suggestions(db.getState(), tab, me));
+}));
+
+app.get("/api/upcoming", requireAuth, wrap(async (req, res) => {
+  res.json(await engine.upcoming(db.getState(), req.query.me === "E" ? "E" : "M"));
 }));
 
 app.post("/api/envies", requireAuth, wrap(async (req, res) => {
@@ -252,6 +261,35 @@ app.post("/api/import", requireAuth, wrap(async (req, res) => {
     return { raw, item: hits[0] || null };
   });
   res.json(out.map((o, i) => o || { raw: lines[i], item: null }));
+}));
+
+// --- Import direct (Letterboxd public, Trakt) ---
+app.post("/api/import/letterboxd", requireAuth, wrap(async (req, res) => {
+  res.json(await importers.letterboxd(req.body && req.body.user, engine.region(db.getState())));
+}));
+app.post("/api/import/trakt", requireAuth, wrap(async (req, res) => {
+  res.json(await importers.trakt(req.body && req.body.user, engine.region(db.getState())));
+}));
+app.get("/api/trakt-key", requireAuth, (req, res) => res.json(importers.traktStatus()));
+app.put("/api/trakt-key", requireAuth, (req, res) => {
+  const key = String((req.body && req.body.key) || "").trim();
+  if (key.length < 16 || key.length > 200 || /\s/.test(key)) return res.status(400).json({ error: "Collez le Client ID Trakt en entier." });
+  importers.saveTrakt(key);
+  res.json(importers.traktStatus());
+});
+app.delete("/api/trakt-key", requireAuth, (req, res) => { importers.clearTrakt(); res.json(importers.traktStatus()); });
+
+// --- Notifications ---
+app.get("/api/push/key", requireAuth, (req, res) => res.json({ publicKey: push.publicKey() }));
+app.post("/api/push/subscribe", requireAuth, wrap(async (req, res) => {
+  push.subscribe(req.body && req.body.sub, req.body && req.body.profile);
+  res.json({ ok: true });
+}));
+app.post("/api/push/unsubscribe", requireAuth, (req, res) => { push.unsubscribe(req.body && req.body.endpoint); res.json({ ok: true }); });
+app.post("/api/push/status", requireAuth, (req, res) => res.json({ subscribed: push.isSubscribed(req.body && req.body.endpoint) }));
+app.post("/api/push/test", requireAuth, wrap(async (req, res) => {
+  const n = await push.send({ title: "mAIwatch", body: "Les notifications fonctionnent sur cet appareil.", tag: "maiwatch-test", url: "./" }, req.body && req.body.endpoint);
+  res.json({ sent: n });
 }));
 
 // --- Assistant d'envies : clé API (jamais renvoyée au navigateur, seulement ses 4 derniers caractères) ---
@@ -278,6 +316,7 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log("[mAIwatch] Serveur démarré sur http://localhost:" + PORT);
+    push.start();
   });
 }
 module.exports = app;

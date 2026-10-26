@@ -49,7 +49,7 @@ async function check(key) {
 function saveKey(key) { store.setSecret("tmdb_key", encrypt(key.trim())); }
 function clearKey() { store.deleteSecret("tmdb_key"); }
 
-async function call(path, params, ttl) {
+async function call(path, params, ttl, bust) {
   const key = getKey();
   if (!key) {
     const e = new Error("tmdb_not_configured");
@@ -58,7 +58,7 @@ async function call(path, params, ttl) {
   }
   const qs = new URLSearchParams(params || {});
   const cacheKey = path + "?" + [...qs.entries()].sort().map((p) => p.join("=")).join("&");
-  if (ttl) {
+  if (ttl && !bust) {
     const hit = store.cacheGet(cacheKey);
     if (hit) return hit;
   }
@@ -128,7 +128,7 @@ async function search(q, year) {
 }
 
 // Fiche complète : détails, bande-annonce, plateformes de la région, titres recommandés.
-async function details(id, region) {
+async function details(id, region, opts) {
   const k = parseKey(id);
   if (!k) { const e = new Error("bad_id"); e.status = 400; throw e; }
   const genres = await genreMaps();
@@ -136,13 +136,18 @@ async function details(id, region) {
     language: LANG,
     append_to_response: "videos,watch/providers,recommendations",
     include_video_language: "fr,en,null",
-  }, 12 * H);
+  }, 12 * H, !!(opts && opts.bust));
   const base = lite(d, k.media, genres);
   const prov = (d["watch/providers"] && d["watch/providers"].results && d["watch/providers"].results[region]) || {};
   const ids = (arr) => (arr || []).map((p) => p.provider_id);
   const vids = ((d.videos && d.videos.results) || []).filter((v) => v.site === "YouTube");
   const trailer = vids.find((v) => v.type === "Trailer" && v.iso_639_1 === "fr") || vids.find((v) => v.type === "Trailer") || vids.find((v) => v.type === "Teaser");
+  const ep = (e) => (e ? { s: e.season_number, e: e.episode_number, date: e.air_date || null } : null);
   return Object.assign(base, {
+    seasonsInfo: k.media === "tv" ? (d.seasons || []).filter((x) => x.season_number > 0).map((x) => ({ n: x.season_number, c: x.episode_count })) : null,
+    lastEp: k.media === "tv" ? ep(d.last_episode_to_air) : null,
+    nextEp: k.media === "tv" ? ep(d.next_episode_to_air) : null,
+    ended: k.media === "tv" ? (d.status === "Ended" || d.status === "Canceled") : false,
     seasons: d.number_of_seasons || null,
     ov: d.overview || "",
     trailer: trailer ? trailer.key : null,

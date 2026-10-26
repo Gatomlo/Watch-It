@@ -2,11 +2,13 @@
 
 Liste partagée de films et séries à voir, pour un foyer. Un seul compte, deux profils (par défaut « Moi » et « Elle », prénoms modifiables).
 
-- **Liste « À voir »** et **« Vus »** avec notes 👍 / 👎 par profil, filtres (type, plateformes, genres), tirage au sort.
-- **Plateformes** : on coche celles du foyer (par pays) ; chaque titre indique où le regarder. Une alerte apparaît quand un titre de la liste quitte ou arrive sur l'une de vos plateformes.
-- **Pour vous** : suggestions pour chaque profil et pour les deux, d'après ce qui est aimé (+3), ajouté (+1), refusé (−2) ou pas aimé (−3), limitées à vos plateformes. Boutons « Ajouter », « Déjà vu », « Pas pour moi ».
-- **Ce soir** : décrire une envie en une phrase. Sans clé IA, recherche par mots-clés (durée, ton, série ou film). Avec une clé **Claude, Gemini ou Mistral**, la phrase est comprise librement et les candidats sont classés.
-- **Import** de titres vus (liste collée, CSV Letterboxd / Trakt / JustWatch), **export** CSV.
+- **Liste « À voir »** et **« Vus »** avec notes en **étoiles (1 à 5)** par profil, filtres (type, plateformes, genres), tirage au sort « Au hasard ».
+- **Plateformes** : on coche celles du foyer (par pays) ; chaque titre indique où le regarder. Une alerte apparaît quand un titre de la liste quitte ou arrive sur l'une de vos plateformes, et une **notification** peut vous prévenir (Réglages > Notifications).
+- **Suivi des séries** : « où j'en suis » (saison, épisode), bouton « J'ai vu S2E6 », badge « Reprendre : S2E6 » ou « Prochain épisode le… ».
+- **Pour vous** : suggestions pour chaque profil et pour les deux, d'après les notes (5★ +3, 4★ +1,5, 2★ −1,5, 1★ −3), les ajouts (+1) et les refus (−2), limitées à vos plateformes. Onglet **Bientôt** : sorties des 5 prochains mois proches de vos genres préférés.
+- **Ce soir** : décrire une envie en une phrase (sans clé IA : mots-clés ; avec une clé **Claude, Gemini ou Mistral** : compréhension libre et classement), ou **Match à deux** : chacun balaie la même sélection sur son téléphone, les titres voulus par les deux apparaissent.
+- **Import** de titres vus : liste collée, CSV (Letterboxd, Trakt, JustWatch), **Letterboxd direct** (profil public, 50 derniers films) et **Trakt direct** (Client ID gratuit saisi dans l'appli). **Export** CSV.
+- **Thème** sombre, clair ou automatique.
 - **PWA** : installable, utilisable hors ligne (copie locale, synchronisation au retour du réseau), partage depuis Signal ou le navigateur vers l'appli (Android, appli installée).
 
 Mêmes principes techniques que Fée Lezcomptes : Node.js ≥ 22.5 (`node:sqlite`), Express, front en JS vanilla sans build.
@@ -53,4 +55,6 @@ Mot de passe oublié : `npm run set-password -- identifiant nouveau_mot_de_passe
 
 - TMDB ne donne **pas** la date de fin d'un titre sur une plateforme. L'appli compare donc la disponibilité d'une vérification à l'autre (toutes les 6 h, à l'ouverture) et signale « N'est plus sur… » / « Nouveau sur… » pendant 21 jours.
 - La disponibilité vient de TMDB (données JustWatch) : elle peut avoir quelques heures de retard.
+- Notifications : le serveur vérifie la liste toutes les 6 h ; elles demandent HTTPS, et sur iPhone l'appli installée sur l'écran d'accueil. Elles passent par le service de notification du navigateur (Google, Apple ou Mozilla) : seul le texte « « Titre » n'est plus sur Netflix » y transite.
+- Letterboxd : seul le flux public (50 derniers films) est lu ; pour tout l'historique, utilisez l'export CSV de Letterboxd.
 - Le partage depuis une autre appli (`share_target`) ne fonctionne que pour l'appli installée sur Android (Chrome).

@@ -49,9 +49,10 @@ db.exec(`
 
 // L'état partagé (liste, notes, profils, plateformes) est un seul JSON numéroté.
 const DEFAULT_STATE = {
-  settings: { region: "BE", platforms: [], profiles: { M: "Moi", E: "Elle" } },
+  settings: { region: "BE", platforms: [], profiles: { M: "Moi", E: "Elle" }, ratingScale: 5 },
   list: [],
   dismissed: { M: [], E: [] },
+  match: null,
 };
 
 function ensureDefaultState() {
@@ -90,6 +91,18 @@ function saveState(state, baseVersion) {
     : db.prepare("UPDATE app_state SET data = ?, version = version + 1, updated_at = datetime('now') WHERE id = 1 AND version = ?").run(json, baseVersion);
   return r.changes ? getStateVersion() : null;
 }
+
+// Migration unique : anciennes notes 👍 / 👎 (+1 / −1) → étoiles (5 et 1). Nouveau réglage : ratingScale = 5.
+(function migrateRatings() {
+  const st = getState();
+  if (st.settings && st.settings.ratingScale === 5) return;
+  st.settings = st.settings || {};
+  (st.list || []).forEach((e) => {
+    if (e.r) ["M", "E"].forEach((u) => { if (e.r[u] === 1) e.r[u] = 5; else if (e.r[u] === -1) e.r[u] = 1; });
+  });
+  st.settings.ratingScale = 5;
+  saveState(st, null);
+})();
 
 function getSecret(name) {
   const row = db.prepare("SELECT value FROM secrets WHERE name = ?").get(name);
