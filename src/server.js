@@ -248,17 +248,21 @@ app.post("/api/envies", requireAuth, wrap(async (req, res) => {
   const text = String((req.body && req.body.text) || "").trim().slice(0, 500);
   if (text.length < 3) return res.status(400).json({ error: "Décrivez votre envie en quelques mots." });
   const me = req.body.me === "E" ? "E" : "M";
-  res.json(await engine.envies(db.getState(), text, me));
+  const mins = Number(req.body.minutes);
+  res.json(await engine.envies(db.getState(), text, me, Number.isFinite(mins) && mins >= 15 && mins <= 720 ? Math.round(mins) : null));
 }));
 
 // Import : chaque ligne est rapprochée du meilleur résultat TMDB ; l'année entre parenthèses affine.
 app.post("/api/import", requireAuth, wrap(async (req, res) => {
   const lines = Array.isArray(req.body && req.body.lines) ? req.body.lines.map((l) => String(l).trim()).filter(Boolean).slice(0, 200) : [];
+  const hints = Array.isArray(req.body.hints) ? req.body.hints : [];
   const out = await engine.pmap(lines, 4, async (raw) => {
     const m = /^(.*?)[\s(]+((?:19|20)\d{2})\)?$/.exec(raw);
     const title = m ? m[1].trim() : raw;
     const hits = await tmdb.search(title, m ? Number(m[2]) : null);
-    return { raw, item: hits[0] || null };
+    const want = hints[lines.indexOf(raw)];
+    const pick = (want && hits.find((h) => h.ty === want)) || hits[0] || null;
+    return { raw, item: pick };
   });
   res.json(out.map((o, i) => o || { raw: lines[i], item: null }));
 }));

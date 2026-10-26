@@ -8,13 +8,15 @@ Appli web (PWA) pour un foyer : liste « À voir » / « Vus », notes par profi
 - `public/app.js` (tout le front : état, synchro, rendu, événements), `styles.css`, `sw.js`, `manifest.json` (partage + raccourcis), `logo.svg` (+ PNG).
 
 ## Modèle de données
-- État partagé : `{ settings:{region, platforms[ids TMDB], profiles{M,E}, ratingScale:5}, list[], dismissed{M[],E[]}, match }`. `match` = partie « Match à deux » : `{id, deck[], votes:{M:{id:±1},E:{}}}`. Migration serveur unique des anciennes notes 👍/👎 vers les étoiles (`db.js`).
-- Entrée de liste : `{ id:'movie:123'|'tv:456', ty:'film'|'serie', t, y, p(affiche), g[noms de genres], len, by:'M'|'E', at, status:'todo'|'seen', r:{M,E: 1..5 étoiles}, prog:{s,e} (séries), note, av:{f[]}, alert }`. Le profil actif de l'appareil (`me`) reste dans localStorage, hors état synchronisé.
+- État partagé : `{ settings:{region, platforms[ids TMDB], profiles{M,E}, ratingScale:5}, list[], dismissed{M[],E[]}, match, collections:[{id,name}] }`. `match` = partie « Match à deux » : `{id, deck[], votes:{M:{id:±1},E:{}}}`. Migration serveur unique des anciennes notes 👍/👎 vers les étoiles (`db.js`).
+- Entrée de liste : `{ id:'movie:123'|'tv:456', ty:'film'|'serie', t, y, p(affiche), g[noms de genres], len, by:'M'|'E', at, status:'todo'|'seen', r:{M,E: 1..5 étoiles}, prog:{s,e} (séries), l:[ids de collections], note, av:{f[]}, alert }`. Le profil actif de l'appareil (`me`) reste dans localStorage, hors état synchronisé.
 - Disponibilité (`AV`) : récupérée à l'ouverture (cache 6 h), jamais synchronisée ; `detectChanges` compare à `e.av` pour les alertes « N'est plus sur… ».
 - Suggestions : score = Σ poids (étoiles : (note − 3) × 1,5 ; ajouté +1 / +0,4 si ajouté par l'autre ; refusé −2) × proximité (recommandations TMDB + genres communs), filtrées sur les plateformes du foyer.
 - Synchro / hors-ligne : copie de `app.js` de Fée Lezcomptes (`merge3`, réessai 15 s, `dirty`). Listes d'objets fusionnées par `id` (chaîne).
 - Thème : `data-theme` sur `<html>` (dark|light|auto, localStorage `maiwatch-theme`), jetons CSS dans `styles.css`.
-- Filtres : type conservé d'un onglet à l'autre ; plateformes et genres remis à zéro au changement d'onglet.
+- Filtres : type conservé d'un onglet à l'autre ; plateformes, genres et listes remis à zéro au changement d'onglet.
+- « Ce soir » : `ui.tb` = temps disponible (durée ou début/fin) → `minutes` envoyé à `/api/envies` (borne durée des films et des épisodes) ; l'heure de fin estimée est calculée côté client (`endNote`).
+- Import Netflix : CSV analysé côté client (`parseNetflix`, `netflixTitles` : « Série: Saison n: épisode » = série) puis `/api/import` avec `hints` (film/serie) pour départager les homonymes.
 
 ## Commandes
 - `npm install`, `npm start` (aucun `.env` : compte créé à la première visite avec le code d'installation de la console, clés TMDB et IA saisies dans l'appli). Test isolé : `PORT`, `DATA_DIR` et `TMDB_BASE` (faux TMDB) dédiés ; `AI_BASE_CLAUDE|GEMINI|MISTRAL` pour un faux fournisseur IA.

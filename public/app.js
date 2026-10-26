@@ -70,11 +70,11 @@
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
     tab: 'me', sug: {}, sugVer: 0, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
     impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false,
-    soon: null, cs: 'envie', matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
+    soon: null, cs: 'envie', cols: [], tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
   };
   var booted = false, isAuthenticated = false, currentUsername = '';
 
-  function defaultState() { return { settings: { region: 'BE', platforms: [], profiles: { M: 'Moi', E: 'Elle' }, ratingScale: 5 }, list: [], dismissed: { M: [], E: [] }, match: null }; }
+  function defaultState() { return { settings: { region: 'BE', platforms: [], profiles: { M: 'Moi', E: 'Elle' }, ratingScale: 5 }, list: [], dismissed: { M: [], E: [] }, match: null, collections: [] }; }
   function migrate(s) {
     s = s || defaultState();
     s.settings = s.settings || {};
@@ -84,6 +84,7 @@
     s.list = s.list || [];
     s.dismissed = Object.assign({ M: [], E: [] }, s.dismissed || {});
     s.match = s.match || null;
+    s.collections = s.collections || [];
     return s;
   }
   function pname(u) { return (S && S.settings.profiles[u]) || (u === 'M' ? 'Moi' : 'Elle'); }
@@ -294,10 +295,12 @@
   }
 
   // ===================== Filtres =====================
+  function colName(id) { for (var i = 0; i < S.collections.length; i++) if (S.collections[i].id === id) return S.collections[i].name; return ''; }
   function passes(it, skip) {
     if (skip !== 'type' && ui.type !== 'all' && it.ty !== ui.type) return false;
     if (skip !== 'plat' && ui.plats.length) { var a = AV[it.id]; if (!a || !a.f.some(function (p) { return ui.plats.indexOf(p) >= 0; })) return false; }
     if (skip !== 'genre' && ui.genres.length && !(it.g || []).some(function (g) { return ui.genres.indexOf(g) >= 0; })) return false;
+    if (skip !== 'col' && ui.cols.length) { var en = entry(it.id); if (!en || !(en.l || []).some(function (l) { return ui.cols.indexOf(l) >= 0; })) return false; }
     return true;
   }
   function pool(scr) {
@@ -306,7 +309,7 @@
     var st = scr === 'seen' ? 'seen' : 'todo';
     return S.list.filter(function (e) { return e.status === st; });
   }
-  function nFilters() { return ui.plats.length + ui.genres.length; }
+  function nFilters() { return ui.plats.length + ui.genres.length + ui.cols.length; }
 
   // ===================== Pièces d'interface =====================
   function poster(it, cls) {
@@ -327,6 +330,7 @@
     if (e && e.alert && daysSince(e.alert.at) <= 21 && e.status === 'todo') {
       h += e.alert.k === 'gone' ? '<span class="badge warn">N’est plus sur ' + esc(pnameOf(e.alert.p)) + '</span>' : '<span class="badge ok">Nouveau sur ' + esc(pnameOf(e.alert.p)) + '</span>';
     }
+    if (e && e.l && e.l.length) e.l.slice(0, 2).forEach(function (l) { var nm = colName(l); if (nm) h += '<span class="badge soft">' + esc(nm) + '</span>'; });
     if (e && e.status === 'todo' && it.d && it.d > todayISO()) h += '<span class="badge soft">Sortie le ' + fmtDate(it.d) + '</span>';
     if (e && e.status === 'todo' && it.ty === 'serie') h += progBadge(e, a);
     var soon = !!(it.d && it.d > todayISO());
@@ -379,6 +383,7 @@
     var toks = [];
     ui.plats.forEach(function (k) { toks.push({ k: 'plat', v: k, l: pnameOf(k) }); });
     ui.genres.forEach(function (g) { toks.push({ k: 'genre', v: g, l: g }); });
+    ui.cols.forEach(function (c) { toks.push({ k: 'col', v: c, l: colName(c) || 'Liste' }); });
     var n = toks.length;
     var tk = '<div class="toks">' + toks.map(function (t) { return '<button class="tok" data-act="tog" data-k="' + t.k + '" data-v="' + esc(t.v) + '" aria-label="Retirer le filtre ' + esc(t.l) + '">' + esc(t.l) + I('close') + '</button>'; }).join('') + '</div>';
     var fb = '<button class="fbtn' + (n ? ' on' : '') + '" data-act="openfilter">' + I('filter') + 'Filtrer' + (n ? '<span class="cnt">' + n + '</span>' : '') + '</button>';
@@ -405,8 +410,14 @@
     var pc = {};
     cs.filter(function (c) { return passes(c, 'plat'); }).forEach(function (c) { var a = AV[c.id]; if (a) a.f.forEach(function (k) { pc[k] = (pc[k] || 0) + 1; }); });
     var plats = platsOn().map(function (k) { return crow('plat', k, pnameOf(k), pc[k] || 0, ui.plats.indexOf(k) >= 0, logoOf(k)); }).join('');
+    var colGroup = '';
+    if (ui.sheet.scr !== 'sug' && S.collections.length) {
+      var cc = {};
+      cs.filter(function (c) { return passes(c, 'col'); }).forEach(function (c) { var en = entry(c.id); (en && en.l || []).forEach(function (l) { cc[l] = (cc[l] || 0) + 1; }); });
+      colGroup = '<div class="fgroup"><h2>Listes</h2><div>' + S.collections.map(function (c) { return crow('col', c.id, c.name, cc[c.id] || 0, ui.cols.indexOf(c.id) >= 0); }).join('') + '</div></div>';
+    }
     return '<div class="scrim" data-scrim="1"><div class="sheet fsheet" role="dialog" aria-modal="true" aria-label="Filtres"><div class="fhead"><h3>Filtres</h3><button class="icon" data-act="closesheet" aria-label="Fermer">' + I('close') + '</button></div>' +
-      '<div class="fbody">' +
+      '<div class="fbody">' + colGroup +
       '<div class="fgroup"><h2>Plateformes</h2><div>' + (plats || '<span class="help">Choisissez d’abord vos plateformes dans les réglages.</span>') + '</div></div>' +
       '<div class="fgroup"><h2>Genres</h2><label for="gq" style="position:absolute;left:-9999px">Chercher un genre</label><input id="gq" class="fsearch" type="search" autocomplete="off" placeholder="Chercher un genre" value="' + esc(ui.fq) + '"><div id="glist">' + genreList() + '</div></div></div>' +
       '<div style="display:flex;gap:10px"><button class="btn ghost" style="flex:none;width:auto" data-act="resetf"' + (nFilters() ? '' : ' disabled') + '>Effacer</button><button class="btn" data-act="closesheet">Voir ' + N + ' titre' + (N > 1 ? 's' : '') + '</button></div></div></div>';
@@ -499,6 +510,11 @@
           (nx && airedUpTo(a2, nx) ? '<button class="btn" data-act="epnext" data-id="' + esc(id) + '">J’ai vu S' + nx.s + 'E' + nx.e + '</button>' : '') + note2 + '</div>';
       }
     }
+    var colg = '';
+    if (e) {
+      colg = '<div class="group"><h2>Listes</h2>' + (S.collections.length ? '<div class="chips">' + S.collections.map(function (c) { var on = (e.l || []).indexOf(c.id) >= 0; return '<button class="chip p' + (on ? ' on' : '') + '" data-act="coltog" data-id="' + esc(id) + '" data-c="' + esc(c.id) + '" aria-pressed="' + on + '">' + esc(c.name) + '</button>'; }).join('') + '</div>' : '<span class="help">Aucune liste pour l’instant : « Halloween », « Avec les enfants », « Vacances »…</span>') +
+        '<div style="display:flex;gap:8px"><label for="newcol-d" style="position:absolute;left:-9999px">Nouvelle liste</label><input id="newcol-d" class="fld" maxlength="30" placeholder="Nouvelle liste" autocomplete="off"><button class="btn ghost" style="flex:none;width:auto;height:48px" data-act="coladd" data-id="' + esc(id) + '">Créer</button></div></div>';
+    }
     var note = e ? '<div class="group"><h2>Notre note</h2><label for="note" style="position:absolute;left:-9999px">Note sur ce titre</label><textarea id="note" class="ta" rows="2" placeholder="Pourquoi on veut le voir, qui l’a conseillé…" data-note="' + esc(id) + '">' + esc(e.note || '') + '</textarea><span class="help">Ajouté par ' + esc(pname(e.by)) + ' le ' + fmtDate(e.at) + '</span></div>' : '';
     var dock;
     var rm = '<button class="icon" style="width:52px;height:52px;border-radius:26px" data-act="remove" data-id="' + esc(id) + '" aria-label="Supprimer de la liste">' + I('trash') + '</button>';
@@ -508,7 +524,7 @@
     var gen = (it.g || []).join(', ');
     return hero + '<div class="group" style="gap:6px;margin-top:-6px"><h1>' + esc(it.t) + '</h1><span class="meta">' + meta(it) + (gen ? ' · ' + esc(gen) : '') + '</span></div>' +
       (d && d.ov ? '<p class="syn">' + esc(d.ov) + '</p>' : (d ? '' : '<div class="skel" style="height:72px"></div>')) +
-      '<div class="group"><div class="sec"><h2>Où le voir</h2><span class="help">Source : TMDB / JustWatch</span></div>' + where + '</div>' + prog + rates + note + '<div class="dock">' + dock + '</div>';
+      '<div class="group"><div class="sec"><h2>Où le voir</h2><span class="help">Source : TMDB / JustWatch</span></div>' + where + '</div>' + prog + rates + colg + note + '<div class="dock">' + dock + '</div>';
   };
 
   function addResults() {
@@ -595,6 +611,36 @@
     return header('Pour vous', 'Selon ce que vous avez aimé et ajouté') + seg + (ui.tab === 'both' ? '<p class="help" style="margin:0">Titres qui plaisent aux deux profils.</p>' : '') + body + filterBar() + cards;
   };
 
+  // Temps disponible : durée choisie, ou heure de début et de fin.
+  function hm(m) { m = ((m % 1440) + 1440) % 1440; return ('0' + Math.floor(m / 60)).slice(-2) + ':' + ('0' + (m % 60)).slice(-2); }
+  function toMin(t) { var a = String(t || '').split(':'); return a.length === 2 ? Number(a[0]) * 60 + Number(a[1]) : null; }
+  function nowRounded() { var d = new Date(), m = d.getHours() * 60 + d.getMinutes(); return hm(Math.ceil(m / 5) * 5); }
+  function tbStart() { return ui.tb.start || nowRounded(); }
+  function availMinutes() {
+    var t = ui.tb;
+    if (t.mode === 'dur') return t.min || 0;
+    if (t.mode === 'end' && toMin(t.end) != null) { var d = toMin(t.end) - toMin(tbStart()); return d <= 0 ? d + 1440 : d; }
+    return 0;
+  }
+  function endNote(it) {
+    var m = availMinutes(); if (!m || !it.len) return '';
+    var st = toMin(tbStart());
+    if (it.ty === 'film') return ' · fini vers ' + hm(st + it.len);
+    var n = Math.max(1, Math.min(6, Math.floor(m / it.len)));
+    return ' · ' + n + ' épisode' + (n > 1 ? 's' : '') + ', fini vers ' + hm(st + n * it.len);
+  }
+  function timeBlock() {
+    var t = ui.tb, m = availMinutes();
+    var chips = [[0, 'Peu importe'], [60, '1 h'], [90, '1 h 30'], [120, '2 h'], [150, '2 h 30'], [180, '3 h']].map(function (c) {
+      var on = c[0] === 0 ? t.mode === 'none' : (t.mode === 'dur' && t.min === c[0]);
+      return '<button class="chip" style="height:40px;padding:0 14px;font-size:13px;' + (on ? 'background:var(--accent);border-color:var(--accent);color:var(--ink);font-weight:700' : 'color:var(--soft)') + '" data-act="tbdur" data-v="' + c[0] + '" aria-pressed="' + on + '">' + c[1] + '</button>';
+    }).join('');
+    var summary = !m ? 'Sans contrainte de durée.' : (t.mode === 'dur' ? fmtLen(m) + ' disponibles : à partir de ' + tbStart() + ', fini avant ' + hm(toMin(tbStart()) + m) + '.' : fmtLen(m) + ' entre ' + tbStart() + ' et ' + t.end + '.');
+    return '<div class="group" style="gap:8px"><h2>Temps disponible</h2><div class="chips scroll">' + chips + '</div>' +
+      '<div class="prog"><label class="help" for="tb-start" style="flex:none">De</label><input id="tb-start" type="time" class="fld" value="' + esc(tbStart()) + '" style="flex:1"><label class="help" for="tb-end" style="flex:none">à</label><input id="tb-end" type="time" class="fld" value="' + esc(t.end || '') + '" style="flex:1"></div>' +
+      '<span class="help">' + esc(summary) + '</span></div>';
+  }
+
   function matchMine(m) { return (m.votes && m.votes[me]) || {}; }
   function matchCur(m) { var v = matchMine(m); for (var i = 0; i < m.deck.length; i++) if (!v[m.deck[i].id]) return m.deck[i]; return null; }
   function matchResults(m) { var a = (m.votes && m.votes.M) || {}, b = (m.votes && m.votes.E) || {}; return m.deck.filter(function (c) { return a[c.id] === 1 && b[c.id] === 1; }); }
@@ -636,7 +682,7 @@
     else if (r) {
       var one = function (it, why, add) {
         var a = AV[it.id] || { f: it.av ? it.av.f : [], r: [], b: [], trailer: false };
-        return '<div class="sug"><button class="row" style="gap:12px" data-act="open" data-id="' + esc(it.id) + '">' + poster(it, 'sm') + '<span class="rb"><span class="title" style="font-size:16px">' + esc(it.t) + '</span><span class="meta" style="font-size:12px">' + meta(it) + '</span><span class="badges">' + a.f.filter(function (p) { return platsOn().indexOf(p) >= 0; }).map(platBadge).join('') + '</span><span class="why">' + esc(why) + '</span></span></button></div>' + (add ? acts(it.id, '') : '');
+        return '<div class="sug"><button class="row" style="gap:12px" data-act="open" data-id="' + esc(it.id) + '">' + poster(it, 'sm') + '<span class="rb"><span class="title" style="font-size:16px">' + esc(it.t) + '</span><span class="meta" style="font-size:12px">' + meta(it) + '</span><span class="badges">' + a.f.filter(function (p) { return platsOn().indexOf(p) >= 0; }).map(platBadge).join('') + '</span><span class="why">' + esc(why + endNote(it)) + '</span></span></button></div>' + (add ? acts(it.id, '') : '');
       };
       var mine = r.inList.map(function (x) { return { it: entry(x.id), why: x.why }; }).filter(function (x) { return x.it; });
       out = (r.note ? '<div class="notice">' + esc(r.note) + '</div>' : '') +
@@ -646,7 +692,7 @@
     }
     return header('Ce soir', '') + csw + (!CFG.tmdb ? noTmdb() : '') +
       '<label for="envie" style="position:absolute;left:-9999px">Décrivez votre envie</label><textarea id="envie" class="ta hi" rows="3" placeholder="Quelque chose de léger, moins de 2 h, qui ne fait pas trop peur…">' + esc(ui.envie) + '</textarea>' +
-      '<div class="chips scroll">' + chips + '</div>' +
+      '<div class="chips scroll">' + chips + '</div>' + timeBlock() +
       '<div style="display:flex;gap:10px;align-items:center"><button class="btn" data-act="envie"' + (ui.envBusy ? ' disabled' : '') + '>Trouver</button><span class="help" style="flex:none;text-align:right">' + (CFG.ai.hasKey ? 'via ' + esc(PROVS[CFG.ai.provider]) : 'mots-clés') + '<br>vos plateformes</span></div>' +
       (!CFG.ai.hasKey ? '<div class="tip">' + I('spark') + '<span>Sans clé API, la recherche repère des mots-clés (durée, ton, série ou film). Ajoutez une clé dans les <button class="link" style="padding:0;min-height:0;color:var(--fg)" data-act="push" data-to="settings">réglages</button> pour décrire librement vos envies.</span></div>' : '') + out;
   };
@@ -675,6 +721,10 @@
       '<div class="group"><div class="sec"><h2>Nos plateformes</h2></div>' + region +
       '<label for="pvq" style="position:absolute;left:-9999px">Chercher une plateforme</label><input id="pvq" class="fsearch" type="search" autocomplete="off" placeholder="Chercher une plateforme" value="' + esc(ui.pvq) + '">' +
       '<div id="pvlist">' + (rows || '<span class="help">' + (provs.length ? 'Aucune plateforme ne correspond.' : 'Chargement des plateformes…') + '</span>') + '</div></div>' +
+      '<div class="group"><h2>Listes thématiques</h2>' + S.collections.map(function (c) {
+        var n = S.list.filter(function (e) { return (e.l || []).indexOf(c.id) >= 0; }).length;
+        return '<div style="display:flex;gap:8px;align-items:center"><label for="cn-' + esc(c.id) + '" style="position:absolute;left:-9999px">Nom de la liste</label><input id="cn-' + esc(c.id) + '" class="fld" data-colname="' + esc(c.id) + '" value="' + esc(c.name) + '" maxlength="30"><span class="help" style="flex:none">' + n + '</span><button class="icon" data-act="coldel" data-c="' + esc(c.id) + '" aria-label="Supprimer la liste ' + esc(c.name) + '">' + I('trash') + '</button></div>';
+      }).join('') + '<div style="display:flex;gap:8px"><label for="newcol" style="position:absolute;left:-9999px">Nouvelle liste</label><input id="newcol" class="fld" maxlength="30" placeholder="Nouvelle liste" autocomplete="off"><button class="btn ghost" style="flex:none;width:auto;height:48px" data-act="colnew">Créer</button></div><span class="help">Rangez les titres dans des listes (fiche d’un titre) puis filtrez « À voir » par liste.</span></div>' +
       '<div class="group"><h2>Profils</h2><div class="pwd"><label class="help" for="pn-M">Premier profil</label><input id="pn-M" class="fld" data-prof="M" value="' + esc(pname('M')) + '" maxlength="20"><label class="help" for="pn-E">Second profil</label><input id="pn-E" class="fld" data-prof="E" value="' + esc(pname('E')) + '" maxlength="20"></div>' +
       '<span class="help">' + esc(pname('M')) + ' : ' + cnt.M + ' titres notés · ' + esc(pname('E')) + ' : ' + cnt.E + '</span></div>' +
       '<div class="group"><h2>Profil actif sur cet appareil</h2><div class="seg">' + ['M', 'E'].map(function (u) { return '<button class="chip' + (me === u ? ' on' : '') + '" data-act="profile" data-u="' + u + '" aria-pressed="' + (me === u) + '"><span class="ava ' + u + '">' + esc(initial(u)) + '</span>' + esc(pname(u)) + '</button>'; }).join('') + '</div></div>' +
@@ -693,8 +743,49 @@
       '<p class="cred">Films, séries, affiches et bandes-annonces : TMDB. Ce produit utilise l’API TMDB mais n’est ni approuvé ni certifié par TMDB. Informations « où regarder » : JustWatch, via TMDB.</p>';
   };
 
+  // Historique Netflix (CSV « Activité de visionnage » ou ViewingActivity.csv de l'export complet).
+  function csvSplit(l) { return (l.match(/("([^"]|"")*"|[^,]*)(,|$)/g) || []).map(function (c) { return c.replace(/,$/, '').replace(/^"|"$/g, '').replace(/""/g, '"').trim(); }); }
+  function parseNetflix(text) {
+    var lines = String(text).replace(/^\ufeff/, '').split(/\r?\n/).filter(Boolean);
+    if (!lines.length) return null;
+    var head = csvSplit(lines[0]).map(function (h) { return h.toLowerCase(); });
+    var ti = head.indexOf('title'); if (ti < 0) ti = head.indexOf('titre');
+    if (ti < 0) return null;
+    var pi = head.indexOf('profile name'), vi = head.indexOf('supplemental video type'), di = head.indexOf('duration');
+    var out = [];
+    lines.slice(1).forEach(function (l) {
+      var c = csvSplit(l);
+      if (vi >= 0 && c[vi]) return;
+      if (di >= 0 && c[di]) { var d = c[di].split(':'); if (d.length === 3 && Number(d[0]) * 3600 + Number(d[1]) * 60 + Number(d[2]) < 300) return; }
+      if (c[ti]) out.push({ profile: pi >= 0 ? c[pi] : '', title: c[ti] });
+    });
+    return out;
+  }
+  function netflixTitles() {
+    var nf = ui.nf; if (!nf) return [];
+    var re = /^(.*?):\s*(Season|Saison|Limited Series|Série limitée|Collection|Miniseries|Mini-série)\b/i, seen = {}, out = [];
+    nf.entries.forEach(function (e) {
+      if (nf.profile && e.profile && e.profile !== nf.profile) return;
+      var m = re.exec(e.title), t = m ? m[1].trim() : e.title, ty = m ? 'serie' : 'film', k = ty + '|' + t.toLowerCase();
+      if (!t || seen[k]) return; seen[k] = 1; out.push({ title: t, ty: ty });
+    });
+    return out;
+  }
+  function netflixPanel() {
+    var nf = ui.nf, titles = netflixTitles();
+    var h = '<div class="group" style="gap:8px"><span class="help" style="line-height:1.5">Sur netflix.com : <b style="color:var(--fg)">Compte &gt; Profil &gt; Activité de visionnage &gt; Télécharger tout</b> (fichier CSV). Si vous avez demandé vos données complètes, prenez le fichier <code>ViewingActivity.csv</code>.</span>' +
+      '<label class="btn ghost" for="nfcsv" style="display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">' + I('file') + 'Choisir le fichier CSV</label><input id="nfcsv" type="file" accept=".csv,text/csv,text/plain" style="position:absolute;left:-9999px">';
+    if (nf && nf.error) h += '<div class="notice">' + esc(nf.error) + '</div>';
+    else if (nf) {
+      if (nf.profiles.length > 1) h += '<label for="nfprof" class="help">Profil Netflix à importer</label><select id="nfprof" class="fld"><option value="">Tous les profils</option>' + nf.profiles.map(function (p) { return '<option value="' + esc(p) + '"' + (nf.profile === p ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select>';
+      h += '<span class="help">' + titles.length + ' titre' + (titles.length > 1 ? 's' : '') + ' distinct' + (titles.length > 1 ? 's' : '') + (titles.length > 200 ? ' (les 200 plus récents seront analysés)' : '') + '. Les séries sont ajoutées à « Vus » ; les titres que Netflix a retirés ou mal nommés peuvent ne pas être reconnus.</span>' +
+        '<button class="btn ghost" style="height:44px" data-act="nfanalyze"' + (titles.length && !ui.impBusy ? '' : ' disabled') + '>Analyser ' + titles.length + ' titre' + (titles.length > 1 ? 's' : '') + '</button>';
+    }
+    return h + '</div>';
+  }
+
   V.import = function () {
-    var modes = [['paste', 'Liste'], ['csv', 'CSV'], ['lb', 'Letterboxd'], ['trakt', 'Trakt'], ['hand', 'À la main']].map(function (m) { return '<button class="chip' + (ui.impMode === m[0] ? ' on' : '') + '" style="justify-content:center;padding:0 6px;font-size:13px" data-act="impmode" data-v="' + m[0] + '">' + m[1] + '</button>'; }).join('');
+    var modes = [['paste', 'Liste'], ['csv', 'CSV'], ['lb', 'Letterboxd'], ['trakt', 'Trakt'], ['netflix', 'Netflix'], ['hand', 'À la main']].map(function (m) { return '<button class="chip' + (ui.impMode === m[0] ? ' on' : '') + '" style="justify-content:center;padding:0 6px;font-size:13px" data-act="impmode" data-v="' + m[0] + '">' + m[1] + '</button>'; }).join('');
     var rows = '', n = 0;
     if (ui.impBusy) rows = skeletons(3);
     else if (ui.impRows) {
@@ -713,6 +804,7 @@
       panel = ui.trakt.hasKey ?
         '<div class="group" style="gap:8px"><label for="tru" class="help">Nom d’utilisateur Trakt (profil public)</label><input id="tru" class="fld" autocomplete="off" autocapitalize="off" placeholder="monpseudo" value="' + esc(ui.trUser) + '"><button class="btn ghost" style="height:44px" data-act="traktfetch"' + (ui.impBusy ? ' disabled' : '') + '>Récupérer mes titres</button><span class="help">Client ID enregistré (…' + esc(ui.trakt.last4) + '). <button class="link" style="padding:0;min-height:0" data-act="traktclear">Retirer</button></span></div>' :
         '<div class="group" style="gap:8px"><label for="trk" class="help" style="line-height:1.5">Trakt demande un <b style="color:var(--fg)">Client ID</b> gratuit : créez une application sur <a href="https://trakt.tv/oauth/applications/new" target="_blank" rel="noopener" style="color:var(--fg)">trakt.tv/oauth/applications</a> (Redirect URI : <code>urn:ietf:wg:oauth:2.0:oob</code>), puis collez son Client ID ici. Il est chiffré sur votre serveur.</label><input id="trk" class="kinput" type="password" autocomplete="off" placeholder="Client ID Trakt"><button class="btn ghost" style="height:44px" data-act="traktsave">Enregistrer</button></div>';
+    } else if (ui.impMode === 'netflix') { panel = netflixPanel();
     } else panel = '<div class="group" style="gap:8px">' + (ui.impMode === 'csv' ? '<label class="btn ghost" for="csv" style="display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">' + I('file') + 'Choisir un fichier CSV</label><input id="csv" type="file" accept=".csv,text/csv,text/plain" style="position:absolute;left:-9999px"><span class="help">Exports Letterboxd, Trakt ou JustWatch : la colonne Name, Title ou Titre est utilisée (et Rating si elle existe).</span>' : '') +
       '<label for="imp" class="help" style="line-height:1.4">Un titre par ligne. Ajoutez l’année entre parenthèses si plusieurs films portent le même nom.</label><textarea id="imp" class="ta" rows="5" style="font-size:14px">' + esc(ui.impText) + '</textarea>' +
       '<button class="btn ghost" style="height:44px" data-act="impanalyze"' + (ui.impBusy ? ' disabled' : '') + '>Analyser la liste</button></div>';
@@ -862,7 +954,7 @@
   }
 
   var A = {
-    go: function (d) { ui.plats = []; ui.genres = []; go(d.to, false); },
+    go: function (d) { ui.plats = []; ui.genres = []; ui.cols = []; go(d.to, false); },
     push: function (d) { go(d.to, true); },
     back: function () { var h = ui.hist.pop(); if (h) { ui.screen = h.screen; ui.detail = h.detail; ui.sheet = null; render(true); } else go('home'); },
     open: function (d) { openDetail(d.id); },
@@ -870,11 +962,11 @@
       var k = d.k, v = d.v;
       if (k === 'type') ui.type = v;
       else if (k === 'mp') { var p = Number(v), i = S.settings.platforms.indexOf(p); if (i >= 0) S.settings.platforms.splice(i, 1); else S.settings.platforms.push(p); save(); detectChanges(); }
-      else { var arr = k === 'plat' ? ui.plats : ui.genres, val = k === 'plat' ? Number(v) : v, j = arr.indexOf(val); if (j >= 0) arr.splice(j, 1); else arr.push(val); }
+      else { var arr = k === 'plat' ? ui.plats : (k === 'col' ? ui.cols : ui.genres), val = k === 'plat' ? Number(v) : v, j = arr.indexOf(val); if (j >= 0) arr.splice(j, 1); else arr.push(val); }
       render(true);
     },
     openfilter: function () { ui.sheet = { type: 'filter', scr: ui.screen }; ui.fq = ''; ui.fexp = false; render(true); },
-    resetf: function () { ui.plats = []; ui.genres = []; render(true); },
+    resetf: function () { ui.plats = []; ui.genres = []; ui.cols = []; render(true); },
     fexp: function () { ui.fexp = !ui.fexp; render(true); },
     closesheet: function () { ui.sheet = null; render(true); },
     tab: function (d) { ui.tab = d.v; render(true); },
@@ -927,7 +1019,7 @@
       var ta = document.getElementById('envie'); if (ta) ui.envie = ta.value;
       if (ui.envie.trim().length < 3) { toast('Décrivez votre envie en quelques mots.'); return; }
       ui.envBusy = true; ui.env = null; render(true);
-      api('/api/envies', { method: 'POST', body: { text: ui.envie, me: me } }).then(function (r) { ui.env = r; })
+      api('/api/envies', { method: 'POST', body: { text: ui.envie, me: me, minutes: availMinutes() || undefined } }).then(function (r) { ui.env = r; })
         .catch(function (e) { ui.env = { error: e.message }; })
         .finally(function () { ui.envBusy = false; if (ui.screen === 'envies') render(true); });
     },
@@ -949,7 +1041,7 @@
       if (dirty) { toast('Des modifications ne sont pas encore envoyées : attendez le retour du réseau.'); return; }
       apiFetch('/api/logout', { method: 'POST' }).finally(function () {
         isAuthenticated = false; S = null; baseState = null; baseVersion = null; try { localStorage.removeItem(STORE_KEY); } catch (e) {}
-        ui.screen = 'home'; ui.hist = []; ui.detail = null; ui.sug = {}; ui.env = null; ui.sr = null; ui.q = ''; ui.plats = []; ui.genres = []; ui.type = 'all'; ui.sheet = null; render();
+        ui.screen = 'home'; ui.hist = []; ui.detail = null; ui.sug = {}; ui.env = null; ui.sr = null; ui.q = ''; ui.plats = []; ui.genres = []; ui.cols = []; ui.type = 'all'; ui.sheet = null; render();
       });
     },
     tmdbsave: function () {
@@ -1034,6 +1126,45 @@
       api('/api/trakt-key', { method: 'PUT', body: { key: k } }).then(function (st) { ui.trakt = st; render(true); }).catch(function (e) { toast(e.message); });
     },
     traktclear: function () { api('/api/trakt-key', { method: 'DELETE' }).then(function (st) { ui.trakt = st; render(true); }).catch(function (e) { toast(e.message); }); },
+    nfanalyze: function () {
+      var t = netflixTitles().slice(0, 200); if (!t.length) return;
+      ui.impBusy = true; ui.impRows = null; render(true);
+      api('/api/import', { method: 'POST', body: { lines: t.map(function (x) { return x.title; }), hints: t.map(function (x) { return x.ty; }) } }).then(function (rows) {
+        ui.impRows = rows.map(function (r) { if (r.item) know(r.item); return { raw: r.raw, item: r.item, r: 0 }; });
+      }).catch(function (e) { toast(e.message); }).finally(function () { ui.impBusy = false; render(true); });
+    },
+    tbdur: function (d) { var m = Number(d.v); ui.tb = m ? { mode: 'dur', min: m, start: ui.tb.start, end: '' } : { mode: 'none', min: 0, start: ui.tb.start, end: '' }; render(true); },
+    coltog: function (d) {
+      var e = entry(d.id); if (!e) return; e.l = e.l || [];
+      var i = e.l.indexOf(d.c); if (i >= 0) e.l.splice(i, 1); else e.l.push(d.c);
+      if (!e.l.length) delete e.l;
+      save(); render(true);
+    },
+    coladd: function (d) {
+      var e = entry(d.id), inp = document.getElementById('newcol-d'), name = inp ? inp.value.trim() : ''; if (!e || !name) { toast('Donnez un nom à la liste.'); return; }
+      var c = S.collections.filter(function (x) { return x.name.toLowerCase() === name.toLowerCase(); })[0];
+      if (!c) { c = { id: 'c' + Date.now().toString(36), name: name }; S.collections.push(c); }
+      e.l = e.l || []; if (e.l.indexOf(c.id) < 0) e.l.push(c.id);
+      save(); render(true); toast('Ajouté à la liste « ' + c.name + ' »');
+    },
+    colnew: function () {
+      var inp = document.getElementById('newcol'), name = inp ? inp.value.trim() : ''; if (!name) { toast('Donnez un nom à la liste.'); return; }
+      if (S.collections.some(function (x) { return x.name.toLowerCase() === name.toLowerCase(); })) { toast('Cette liste existe déjà.'); return; }
+      S.collections.push({ id: 'c' + Date.now().toString(36), name: name }); save(); render(true);
+    },
+    coldel: function (d) {
+      var c = S.collections.filter(function (x) { return x.id === d.c; })[0]; if (!c) return;
+      var idx = S.collections.indexOf(c), had = [];
+      S.collections.splice(idx, 1);
+      S.list.forEach(function (e) { if (e.l && e.l.indexOf(c.id) >= 0) { had.push(e.id); e.l = e.l.filter(function (x) { return x !== c.id; }); if (!e.l.length) delete e.l; } });
+      ui.cols = ui.cols.filter(function (x) { return x !== c.id; });
+      save(); render(true);
+      toast('Liste « ' + c.name + ' » supprimée', 'Annuler', function () {
+        S.collections.splice(idx, 0, c);
+        had.forEach(function (id) { var e = entry(id); if (e) { e.l = e.l || []; e.l.push(c.id); } });
+        save(); render(true);
+      });
+    },
     impbulk: function () { (ui.impRows || []).forEach(function (r) { if (r.item && !r.r) r.r = 4; }); render(true); },
     syncnow: function () { syncNow(); pullState(); },
     impmode: function (d) { ui.impMode = d.v; ui.impRows = null; if (d.v === 'trakt') loadTrakt(); render(true); },
@@ -1042,7 +1173,7 @@
       var lines = ui.impText.split(/\n/).map(function (l) { return l.trim(); }).filter(Boolean);
       if (!lines.length) { toast('Ajoutez au moins un titre.'); return; }
       ui.impBusy = true; ui.impRows = null; render(true);
-      api('/api/import', { method: 'POST', body: { lines: lines } }).then(function (rows) {
+      api('/api/import', { method: 'POST', body: { lines: lines, hints: ui.impHints || undefined } }).then(function (rows) {
         ui.impRows = rows.map(function (r) { if (r.item) know(r.item); return { raw: r.raw, item: r.item, r: (ui.impRatings && ui.impRatings[r.raw]) || r.r || 0 }; });
         ui.impRatings = null;
       }).catch(function (e) { toast(e.message); }).finally(function () { ui.impBusy = false; render(true); });
@@ -1086,6 +1217,20 @@
       save(); render(true);
     }
     else if (t.dataset && t.dataset.impr !== undefined) { ui.impRows[+t.dataset.impr].r = Number(t.value); render(true); }
+    else if (t.id === 'tb-start') { ui.tb.start = t.value; render(true); }
+    else if (t.id === 'tb-end') { ui.tb = { mode: t.value ? 'end' : 'none', min: 0, start: ui.tb.start, end: t.value }; render(true); }
+    else if (t.id === 'nfprof') { ui.nf.profile = t.value; render(true); }
+    else if (t.id === 'nfcsv' && t.files && t.files[0]) {
+      var rd = new FileReader();
+      rd.onload = function () {
+        var ent = parseNetflix(rd.result);
+        if (!ent || !ent.length) ui.nf = { error: 'Fichier non reconnu : il doit contenir une colonne « Title » (ou « Titre »).', entries: [], profiles: [], profile: '' };
+        else { var pr = []; ent.forEach(function (e) { if (e.profile && pr.indexOf(e.profile) < 0) pr.push(e.profile); }); ui.nf = { entries: ent, profiles: pr, profile: '' }; }
+        ui.impRows = null; render(true);
+      };
+      rd.readAsText(t.files[0]);
+    }
+    else if (t.dataset && t.dataset.colname) { var co = S.collections.filter(function (x) { return x.id === t.dataset.colname; })[0]; if (co) { co.name = t.value.trim() || co.name; save(); render(true); } }
     else if (t.id === 'region') { S.settings.region = t.value; PV = {}; S.settings.platforms = []; save(); loadProviders(true).then(function () { AV = {}; AV_AT = 0; refreshAvail(); render(true); }); }
     else if (t.id === 'csv' && t.files && t.files[0]) {
       var f = new FileReader();
