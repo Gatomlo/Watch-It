@@ -157,6 +157,15 @@ async function details(id, region, opts) {
   });
 }
 
+// Guide des épisodes d'une saison (titre, date de diffusion, durée, résumé).
+async function season(id, n) {
+  const k = parseKey(id);
+  const num = Number(n);
+  if (!k || k.media !== "tv" || !Number.isInteger(num) || num < 0 || num > 200) { const e = new Error("bad_id"); e.status = 400; throw e; }
+  const d = await call("/tv/" + k.num + "/season/" + num, { language: LANG }, 12 * H);
+  return (d.episodes || []).map((e) => ({ e: e.episode_number, name: e.name || "", date: e.air_date || null, len: e.runtime || null, ov: (e.overview || "").slice(0, 500) }));
+}
+
 // Plateformes proposées dans la région (films + séries fusionnés), les plus courantes d'abord.
 async function providers(region) {
   const [m, t] = await Promise.all([
@@ -177,4 +186,4 @@ async function discover(media, params) {
   return (data.results || []).map((r) => lite(r, media, genres)).filter(Boolean);
 }
 
-module.exports = { configured, status, check, saveKey, clearKey, genreMaps, search, details, providers, discover, parseKey, mediaOf, typeOf };
+module.exports = { season, configured, status, check, saveKey, clearKey, genreMaps, search, details, providers, discover, parseKey, mediaOf, typeOf };

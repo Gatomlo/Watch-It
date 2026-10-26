@@ -56,10 +56,13 @@ function sourcesOf(state, user) {
 async function scoreUser(state, user) {
   const reg = region(state);
   const src = sourcesOf(state, user).filter((s) => !s.ghost && tmdb.parseKey(s.e.id));
-  const pos = src.filter((s) => s.w > 0).sort((a, b) => b.w - a.w).slice(0, 12);
-  const neg = src.filter((s) => s.w < 0).sort((a, b) => a.w - b.w).slice(0, 6);
+  const pos = src.filter((s) => s.w > 0).sort((a, b) => b.w - a.w).slice(0, 20);
+  const neg = src.filter((s) => s.w < 0).sort((a, b) => a.w - b.w).slice(0, 8);
   const dismissed = new Set((state.dismissed && state.dismissed[user]) || []);
   const scores = new Map();
+  // Poids de chaque genre selon ce que le profil aime : sert à compléter les suggestions (voir genreCandidates).
+  scores.genreW = {};
+  pos.forEach((s) => (s.e.g || []).forEach((g) => { scores.genreW[g] = (scores.genreW[g] || 0) + s.w; }));
   const detailsOf = await pmap(pos.concat(neg), 5, (s) => tmdb.details(s.e.id, reg));
   pos.concat(neg).forEach((s, i) => {
     const d = detailsOf[i];
@@ -78,10 +81,39 @@ async function scoreUser(state, user) {
   return scores;
 }
 
+// Complète les suggestions avec des titres de vos genres préférés déjà disponibles sur vos plateformes
+// (TMDB « discover »), pour aller bien au-delà des seules recommandations des titres aimés.
+async function genreCandidates(state, user, scores) {
+  const plats = platformsOf(state), reg = region(state), gw = scores.genreW || {};
+  const top = Object.keys(gw).sort((a, b) => gw[b] - gw[a]).slice(0, 3);
+  if (!top.length || !plats.length) return;
+  const maps = await tmdb.genreMaps();
+  const dismissed = new Set((state.dismissed && state.dismissed[user]) || []);
+  const jobs = [];
+  ["movie", "tv"].forEach((media) => {
+    const ids = top.map((n) => maps.byName[n.toLowerCase()] && maps.byName[n.toLowerCase()][media]).filter(Boolean);
+    if (ids.length) [1, 2, 3].forEach((page) => jobs.push({ media, ids, page }));
+  });
+  const res = await pmap(jobs, 4, (j) => tmdb.discover(j.media, {
+    with_genres: j.ids.join("|"), with_watch_providers: plats.join("|"), watch_region: reg,
+    with_watch_monetization_types: "flatrate", sort_by: "popularity.desc", page: String(j.page),
+  }));
+  res.filter(Boolean).forEach((arr) => arr.forEach((c) => {
+    if (inList(state, c.id) || dismissed.has(c.id)) return;
+    const shared = c.g.filter((g) => gw[g] > 0);
+    if (!shared.length) return;
+    const v = 0.15 * shared.reduce((a, g) => a + gw[g], 0);
+    const cur = scores.get(c.id);
+    if (cur) { cur.s += v * 0.3; return; }
+    scores.set(c.id, { c, s: v, parts: [{ g: shared.slice(0, 2), v }] });
+  }));
+}
+
 function reasonParts(parts) {
   const seen = new Set(), out = [];
   parts.filter((p) => p.v > 0).sort((a, b) => b.v - a.v).forEach((p) => {
-    if (!seen.has(p.t) && out.length < 2) { seen.add(p.t); out.push({ t: p.t, l: p.l }); }
+    if (p.g) { if (!out.some((o) => o.g)) out.push({ g: p.g.map((x) => x.toLowerCase()).join(", ") }); return; }
+    if (!seen.has(p.t) && out.filter((o) => o.t).length < 2) { seen.add(p.t); out.push({ t: p.t, l: p.l }); }
   });
   return out;
 }
@@ -89,6 +121,7 @@ function reasonParts(parts) {
 async function suggestions(state, tab, me) {
   const users = tab === "both" ? ["M", "E"] : [tab === "me" ? me : other(me)];
   const maps = await Promise.all(users.map((u) => scoreUser(state, u)));
+  await Promise.all(maps.map((m, i) => genreCandidates(state, users[i], m).catch(() => {})));
   const reg = region(state), plats = platformsOf(state);
   let cands = [];
   maps[0].forEach((v, id) => {
@@ -97,14 +130,14 @@ async function suggestions(state, tab, me) {
     cands.push({ c: v.c, s: Math.min.apply(null, all.map((x) => x.s)), parts: all.reduce((a, x) => a.concat(x.parts), []) });
   });
   cands.sort((a, b) => b.s - a.s);
-  const checked = await pmap(cands.slice(0, 40), 6, async (x) => {
+  const checked = await pmap(cands.slice(0, 90), 6, async (x) => {
     const d = await tmdb.details(x.c.id, reg);
     return { d, x };
   });
   const limit = Date.now() - 150 * 24 * 3600 * 1000;
   return checked.filter(Boolean)
     .filter(({ d }) => !plats.length || d.av.f.some((p) => plats.indexOf(p) >= 0))
-    .slice(0, 30)
+    .slice(0, 60)
     .map(({ d, x }) => ({ item: lean(d), why: reasonParts(x.parts), isnew: !!(d.date && Date.parse(d.date) > limit) }));
 }
 

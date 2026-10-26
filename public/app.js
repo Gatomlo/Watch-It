@@ -75,7 +75,7 @@
 
   var ui = {
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
-    tab: 'me', sug: {}, sugOff: {}, sugVer: 0, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
+    tab: 'me', sug: {}, sugOff: {}, sugVer: 0, epOpen: false, epSeason: null, epData: {}, epExp: {}, epErr: {}, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
     impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false,
     sset: 'menu', accMsg: '', keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
   };
@@ -474,7 +474,10 @@
   }
   function reasonHtml(parts) {
     if (!parts || !parts.length) return 'Proche de vos goûts';
-    return 'Proche de ' + parts.map(function (p) { return '<b>' + esc(p.t) + '</b> (' + esc(p.l) + ')'; }).join(' et de ');
+    var recs = parts.filter(function (p) { return p.t; }), gen = parts.filter(function (p) { return p.g; }), h = [];
+    if (recs.length) h.push('Proche de ' + recs.map(function (p) { return '<b>' + esc(p.t) + '</b> (' + esc(p.l) + ')'; }).join(' et de '));
+    if (gen.length) h.push('Genres que vous aimez : ' + esc(gen[0].g));
+    return h.join(' · ') || 'Proche de vos goûts';
   }
   function skeletons(n) { var h = ''; for (var i = 0; i < n; i++) h += '<div class="skel"></div>'; return '<div class="list" aria-busy="true">' + h + '</div>'; }
   function errBox(msg, act) { return '<div class="empty">' + esc(msg) + (act ? '<br><button class="link" data-act="' + act + '">Réessayer</button>' : '') + '</div>'; }
@@ -590,8 +593,37 @@
     var gen = (it.g || []).join(', ');
     return hero + '<div class="group" style="gap:6px;margin-top:-6px"><h1>' + esc(it.t) + '</h1><span class="meta">' + meta(it) + (gen ? ' · ' + esc(gen) : '') + '</span></div>' +
       (d && d.ov ? '<p class="syn">' + esc(d.ov) + '</p>' : (d ? '' : '<div class="skel" style="height:72px"></div>')) +
-      '<div class="group"><div class="sec"><h2>Où le voir</h2><span class="help">Source : TMDB / JustWatch</span></div>' + where + '</div>' + prog + rates + colg + note + '<div class="dock">' + dock + '</div>';
+      '<div class="group"><div class="sec"><h2>Où le voir</h2><span class="help">Source : TMDB / JustWatch</span></div>' + where + '</div>' + prog + epGuide(id, d, e) + rates + colg + note + '<div class="dock">' + dock + '</div>';
   };
+
+  // Guide des épisodes d'une série : une saison à la fois, avec les épisodes déjà vus cochés.
+  function epGuide(id, d, e) {
+    var se = d && d.seasonsInfo; if (!se || !se.length) return '';
+    var h = '<div class="group"><div class="sec"><h2>Guide des épisodes</h2><button class="link" style="min-height:44px" data-act="epopen">' + (ui.epOpen ? 'Masquer' : 'Afficher') + '</button></div>';
+    if (!ui.epOpen) return h + '</div>';
+    var sn = ui.epSeason != null ? ui.epSeason : ((e && e.prog && e.prog.s) || se[0].n);
+    h += '<label for="ep-season" style="position:absolute;left:-9999px">Saison</label><select id="ep-season" class="fld">' + se.map(function (x) { return '<option value="' + x.n + '"' + (x.n === sn ? ' selected' : '') + '>Saison ' + x.n + ' (' + x.c + ' épisode' + (x.c > 1 ? 's' : '') + ')</option>'; }).join('') + '</select>';
+    var eps = ui.epData[id + ':' + sn];
+    if (!eps) return h + (ui.epErr[id + ':' + sn] ? errBox(ui.epErr[id + ':' + sn], 'epretry') : skeletons(2)) + '</div>';
+    if (!eps.length) return h + '<div class="empty">Aucun épisode référencé pour cette saison.</div></div>';
+    var p = (e && e.prog) || {}, today = todayISO(), tracking = e && e.status === 'todo';
+    h += '<div class="eps">' + eps.map(function (x) {
+      var seen = !!e && (e.status === 'seen' || sn < (p.s || 0) || (sn === p.s && x.e <= (p.e || 0)));
+      var aired = !!x.date && x.date <= today, key = sn + '-' + x.e, exp = !!ui.epExp[key];
+      var chk = tracking ? (aired ? '<button class="epc' + (seen ? ' on' : '') + '" data-act="epset" data-s="' + sn + '" data-e="' + x.e + '" aria-pressed="' + seen + '" aria-label="' + (seen ? 'Épisode ' + x.e + ' vu' : 'Marquer vu jusqu’à l’épisode ' + x.e) + '">' + I('check') + '</button>' : '<span class="epc dis" aria-hidden="true"></span>') : (e ? '<span class="epc on" aria-hidden="true">' + I('check') + '</span>' : '<span class="epc dis" aria-hidden="true"></span>');
+      return '<div class="ep">' + chk + '<button class="epi" data-act="epinfo" data-k="' + key + '" aria-expanded="' + exp + '"><span class="ept"><b>' + x.e + '.</b> ' + esc(x.name || 'Épisode ' + x.e) + '</span><span class="epm">' + (x.date ? esc(fmtDate(x.date)) + (aired ? '' : ' · à venir') : 'Date inconnue') + (x.len ? ' · ' + x.len + ' min' : '') + '</span>' + (x.ov ? '<span class="epo' + (exp ? ' open' : '') + '">' + esc(x.ov) + '</span>' : '') + '</button></div>';
+    }).join('') + '</div>';
+    if (!e) h += '<span class="help">Ajoutez la série à votre liste pour cocher les épisodes vus.</span>';
+    else if (tracking) h += '<span class="help">Cochez le dernier épisode vu : les précédents sont cochés aussi.</span>';
+    return h + '</div>';
+  }
+  function loadSeason(id, n) {
+    var k = id + ':' + n; if (ui.epData[k]) return;
+    delete ui.epErr[k];
+    api('/api/title/' + encodeURIComponent(id) + '/season/' + n).then(function (eps) { ui.epData[k] = eps; })
+      .catch(function (e) { ui.epErr[k] = e.message; })
+      .finally(function () { if (ui.screen === 'detail' && ui.detail === id) safeRender(); });
+  }
 
   function addResults() {
     var q = norm(ui.q);
@@ -1045,7 +1077,7 @@
   function openDetail(id) {
     ui.sheet = null;
     ui.hist.push({ screen: ui.screen, detail: ui.detail });
-    ui.detail = id; ui.screen = 'detail'; ui.dd = null;
+    ui.detail = id; ui.screen = 'detail'; ui.dd = null; ui.epOpen = false; ui.epSeason = null; ui.epExp = {};
     render();
     api('/api/title/' + encodeURIComponent(id)).then(function (d) {
       if (ui.detail !== id) return;
@@ -1229,6 +1261,25 @@
       if (navigator.onLine === false) { toast('Hors ligne : la bande-annonce a besoin du réseau.'); return; }
       ui.sheet = { type: 'trailer', key: d.k }; render(true);
     },
+    epopen: function () {
+      ui.epOpen = !ui.epOpen;
+      if (ui.epOpen && ui.dd && ui.dd.seasonsInfo) { var e = entry(ui.detail), sn = ui.epSeason != null ? ui.epSeason : ((e && e.prog && e.prog.s) || ui.dd.seasonsInfo[0].n); ui.epSeason = sn; loadSeason(ui.detail, sn); }
+      render(true);
+    },
+    epinfo: function (d) { ui.epExp[d.k] = !ui.epExp[d.k]; render(true); },
+    epretry: function () { var k = ui.detail + ':' + ui.epSeason; delete ui.epData[k]; loadSeason(ui.detail, ui.epSeason); render(true); },
+    epset: function (d) {
+      var e = entry(ui.detail); if (!e || e.status !== 'todo') return;
+      var s = Number(d.s), n = Number(d.e), p = e.prog || {};
+      if (p.s === s && p.e === n) {
+        // re-toucher le dernier épisode vu le décoche : retour à l'épisode précédent
+        var se = (ui.dd && ui.dd.seasonsInfo) || [], prev = se.filter(function (x) { return x.n < s; }).pop();
+        if (n > 1) e.prog = { s: s, e: n - 1 }; else if (prev) e.prog = { s: prev.n, e: prev.c }; else delete e.prog;
+      } else e.prog = { s: s, e: n };
+      save(); render(true);
+      var a = ui.dd ? { se: ui.dd.seasonsInfo, last: ui.dd.lastEp, next: ui.dd.nextEp, ended: ui.dd.ended } : null;
+      if (e.prog && a && !nextEp(e, a) && a.ended) { ui.sheet = { type: 'rate', id: ui.detail }; render(true); toast('Dernier épisode vu : la série est terminée.'); }
+    },
     install: function () {
       if (!deferredInstall) { ui.sset = 'install'; if (ui.screen !== 'settings') { go('settings', true); ui.sset = 'install'; } render(); return; }
       var ev = deferredInstall; ev.prompt();
@@ -1407,6 +1458,7 @@
       save(); render(true);
     }
     else if (t.dataset && t.dataset.impr !== undefined) { ui.impRows[+t.dataset.impr].r = Number(t.value); render(true); }
+    else if (t.id === 'ep-season') { ui.epSeason = Number(t.value); loadSeason(ui.detail, ui.epSeason); render(true); }
     else if (t.id === 'tb-start') { ui.tb.start = t.value; render(true); }
     else if (t.id === 'tb-end') { ui.tb = { mode: t.value ? 'end' : 'none', min: 0, start: ui.tb.start, end: t.value }; render(true); }
     else if (t.id === 'nfprof') { ui.nf.profile = t.value; render(true); }

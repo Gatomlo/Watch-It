@@ -222,6 +222,10 @@ app.get("/api/search", requireAuth, wrap(async (req, res) => {
   res.json(await tmdb.search(q, y));
 }));
 
+app.get("/api/title/:id/season/:n", requireAuth, wrap(async (req, res) => {
+  res.json(await tmdb.season(req.params.id, req.params.n));
+}));
+
 app.get("/api/title/:id", requireAuth, wrap(async (req, res) => {
   const d = await tmdb.details(req.params.id, engine.region(db.getState()));
   delete d.recs;
