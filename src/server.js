@@ -326,6 +326,10 @@ app.post("/api/push/status", requireAuth, (req, res) => {
   const ep = req.body && req.body.endpoint, on = push.isSubscribed(ep);
   res.json({ subscribed: on, prefs: on ? push.prefsOf(ep) : null });
 });
+app.post("/api/react", requireAuth, wrap(async (req, res) => {
+  const b = req.body || {};
+  res.json(push.react(String(b.id || ""), b.u, b.want !== false));
+}));
 app.post("/api/push/prefs", requireAuth, (req, res) => {
   const ep = req.body && req.body.endpoint;
   if (!push.isSubscribed(ep)) return res.status(404).json({ error: "Appareil non abonné." });

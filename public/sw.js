@@ -65,13 +65,28 @@ self.addEventListener('push', function (e) {
   var data = {};
   try { data = e.data ? e.data.json() : {}; } catch (err) {}
   e.waitUntil(self.registration.showNotification(data.title || 'mAIwatch', {
-    body: data.body || '', icon: 'icon-192.png', badge: 'icon-192.png', tag: data.tag || 'maiwatch', data: { url: data.url || './' }
+    body: data.body || '', icon: 'icon-192.png', badge: 'icon-192.png', tag: data.tag || 'maiwatch', actions: data.actions || [],
+    data: { url: data.url || './', id: data.id || null, u: data.u || null }
   }));
 });
 
 self.addEventListener('notificationclick', function (e) {
   e.notification.close();
-  var url = (e.notification.data && e.notification.data.url) || './';
+  var d = e.notification.data || {};
+  // « Moi aussi » / « Pas pour moi » sans ouvrir l'appli ; si la requête échoue (session expirée, hors ligne), on ouvre l'écran des ajouts.
+  if ((e.action === 'want' || e.action === 'no') && d.id && d.u) {
+    e.waitUntil(fetch('api/react', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: d.id, u: d.u, want: e.action === 'want' }) })
+      .then(function (r) { if (!r.ok) throw new Error('react'); return r.json(); })
+      .then(function (r) {
+        return self.registration.showNotification('mAIwatch', { body: e.action === 'want' ? '« ' + r.title + ' » ajouté à ce que vous voulez voir.' : '« ' + r.title + ' » écarté.', icon: 'icon-192.png', tag: e.notification.tag, silent: true })
+          .then(function () { return new Promise(function (ok) { setTimeout(ok, 4000); }); })
+          .then(function () { return self.registration.getNotifications({ tag: e.notification.tag }); })
+          .then(function (l) { l.forEach(function (n) { n.close(); }); });
+      })
+      .catch(function () { return self.clients.openWindow(new URL(d.url || './', self.registration.scope).href); }));
+    return;
+  }
+  var url = d.url || './';
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
     var abs = new URL(url, self.registration.scope).href;
     for (var i = 0; i < list.length; i++) {

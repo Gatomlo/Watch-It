@@ -129,9 +129,28 @@ async function flushAdded() {
     const items = queue[target].splice(0);
     if (!items.length) continue;
     const who = names[items[0].by] || (items[0].by === "M" ? "Moi" : "Elle");
-    const body = items.length === 1 ? who + " a ajouté « " + items[0].t + " »." : who + " a ajouté " + items.length + " titres : " + items.slice(0, 3).map((i) => "« " + i.t + " »").join(", ") + (items.length > 3 ? "…" : "") + ".";
-    await send({ title: "mAIwatch", body, tag: "maiwatch-added", url: "./?view=news" }, null, "added", target).catch(() => {});
+    const one = items.length === 1;
+    const body = one ? who + " a ajouté « " + items[0].t + " ». Voulez-vous le voir aussi ?" : who + " a ajouté " + items.length + " titres : " + items.slice(0, 3).map((i) => "« " + i.t + " »").join(", ") + (items.length > 3 ? "…" : "") + ". Voulez-vous les voir aussi ?";
+    // Boutons sous la notification (Android / ordinateur ; iPhone n'affiche que le texte) : le service worker appelle /api/react.
+    const actions = one ? [{ action: "want", title: "Moi aussi" }, { action: "no", title: "Pas pour moi" }] : [{ action: "open", title: "Voir la liste" }];
+    await send({ title: "mAIwatch", body, tag: one ? "maiwatch-added-" + items[0].id : "maiwatch-added", url: "./?view=news", u: target, id: one ? items[0].id : null, actions }, null, "added", target).catch(() => {});
   }
+}
+
+// Réaction « Moi aussi » / « Pas pour moi » depuis une notification (ou tout client) : modifie l'état partagé.
+function react(id, u, want) {
+  if ((u !== "M" && u !== "E") || typeof id !== "string") { const e = new Error("Requête invalide."); e.status = 400; throw e; }
+  for (let i = 0; i < 4; i++) {
+    const state = store.getState(), version = store.getStateVersion();
+    const e = state.list.find((x) => x.id === id);
+    if (!e) { const err = new Error("Titre introuvable."); err.status = 404; throw err; }
+    if (want) {
+      e.w = e.w || { [e.by]: true }; e.w[u] = true;
+      if (e.no) delete e.no[u];
+    } else { e.no = e.no || {}; e.no[u] = true; }
+    if (store.saveState(state, version) != null) return { ok: true, title: e.t };
+  }
+  const err = new Error("Réessayez."); err.status = 409; throw err;
 }
 
 // --- Date de sortie atteinte (titres ajoutés avant leur sortie : e.d) ---
@@ -171,4 +190,4 @@ function start() {
   timer.unref();
 }
 
-module.exports = { publicKey, subscribe, unsubscribe, count, isSubscribed, prefsOf, setPrefs, send, setSender, watch, start, notifyAdded, flushAdded, releaseCheck };
+module.exports = { publicKey, subscribe, unsubscribe, count, isSubscribed, prefsOf, setPrefs, send, setSender, watch, start, notifyAdded, flushAdded, releaseCheck, react };
