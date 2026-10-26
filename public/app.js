@@ -43,7 +43,7 @@
     close: '<path d="M6 6l12 12M18 6L6 18"/>', list: '<path d="M4 6h16M4 12h16M4 18h10"/>', checkc: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
     spark: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>',
     dice: '<rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.2"/><circle cx="15.5" cy="15.5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="15.5" cy="8.5" r="1.2"/><circle cx="8.5" cy="15.5" r="1.2"/>',
-    play: '<path d="M8 5l12 7-12 7z"/>', up: '<path d="M7 11v9H4v-9zM7 11l4-8c1.5 0 2.5 1 2.5 2.5V9H19a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 17.8 20H7"/>',
+    play: '<path d="M8 5l12 7-12 7z"/>', share: '<path d="M12 3v12M8 7l4-4 4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>', up: '<path d="M7 11v9H4v-9zM7 11l4-8c1.5 0 2.5 1 2.5 2.5V9H19a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 17.8 20H7"/>',
     trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>', share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/>',
     dl: '<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>', ul: '<path d="M12 15V3M7 8l5-5 5 5M4 20h16"/>', chev: '<path d="M9 5l7 7-7 7"/>',
     file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5"/>', out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
@@ -257,6 +257,25 @@
   window.addEventListener('offline', function () { setOnline(false); });
 
   // ===================== Plateformes et disponibilité =====================
+  // Lien de recherche du titre sur le site d'une plateforme (TMDB ne fournit pas de lien direct par titre).
+  function platUrl(name, title) {
+    var n = norm(name || ''), q = encodeURIComponent(title);
+    if (/netflix/.test(n)) return 'https://www.netflix.com/search?q=' + q;
+    if (/prime video|amazon/.test(n)) return 'https://www.primevideo.com/search/?phrase=' + q;
+    if (/disney/.test(n)) return 'https://www.disneyplus.com/search/' + q;
+    if (/apple tv/.test(n)) return 'https://tv.apple.com/search?term=' + q;
+    if (/canal/.test(n)) return 'https://www.canalplus.com/recherche/?q=' + q;
+    if (/\bmax\b/.test(n)) return 'https://play.max.com/search?q=' + q;
+    if (/paramount/.test(n)) return 'https://www.paramountplus.com/search/?q=' + q;
+    if (/youtube/.test(n)) return 'https://www.youtube.com/results?search_query=' + q;
+    return null;
+  }
+  // Meilleure cible à partager : plateforme du foyer, sinon une autre, sinon la page TMDB / JustWatch.
+  function shareTarget(d) {
+    var f = d.av.f, mine = f.filter(function (p) { return platsOn().indexOf(p) >= 0; }), order = mine.concat(f.filter(function (p) { return mine.indexOf(p) < 0; }));
+    for (var i = 0; i < order.length; i++) { var u = platUrl(pnameOf(order[i]), d.t); if (u) return { name: pnameOf(order[i]), url: u }; }
+    return d.av.link ? { name: '', url: d.av.link } : null;
+  }
   function logoOf(id) { var p = PV[id]; return p && p.logo ? '<img class="pl" src="' + IMG + 'w45' + esc(p.logo) + '" alt="" loading="lazy">' : '<span class="dot" style="background:var(--muted)"></span>'; }
   function pnameOf(id) { return PV[id] ? PV[id].name : 'Plateforme ' + id; }
   function loadProviders(force) {
@@ -568,13 +587,14 @@
       var f = d.av.f, shown = {};
       f.forEach(function (p) {
         var on = platsOn().indexOf(p) >= 0; shown[p] = 1;
-        where += '<div class="card' + (on ? '' : ' q') + '">' + logoOf(p) + '<span class="ct"><b>' + esc(pnameOf(p)) + '</b><span>Inclus dans l’abonnement</span></span><span class="st ' + (on ? 'ok' : 'no') + '">' + (on ? 'Dans votre abo' : 'Pas dans vos abos') + '</span></div>';
+        where += '<div class="card' + (on ? '' : ' q') + '">' + logoOf(p) + '<span class="ct"><b>' + esc(pnameOf(p)) + '</b><span>Inclus dans l’abonnement</span></span><span class="st ' + (on ? 'ok' : 'no') + '">' + (on ? 'Dans votre abo' : 'Pas dans vos abos') + '</span>' + (platUrl(pnameOf(p), d.t) ? '<a class="icon" href="' + esc(platUrl(pnameOf(p), d.t)) + '" target="_blank" rel="noopener" aria-label="Ouvrir ' + esc(pnameOf(p)) + '">' + I('play') + '</a>' : '') + '</div>';
       });
       var extra = [];
       d.avNames.r.forEach(function (n) { extra.push(n + ' (location)'); });
       d.avNames.b.forEach(function (n) { if (d.avNames.r.indexOf(n) < 0) extra.push(n + ' (achat)'); });
       if (extra.length) where += '<div class="card q"><span class="ct"><b>Location ou achat</b><span>' + esc(extra.slice(0, 5).join(' · ')) + '</span></span></div>';
       if (!where) where = '<div class="empty">Pas disponible en streaming dans votre région pour l’instant.</div>';
+      if (shareTarget(d) || d.av.link) where += '<button class="btn ghost" data-act="share" data-id="' + esc(id) + '">' + I('share') + ' Partager la fiche</button>';
     } else where = skeletons(1);
     var rates = '';
     if (e && e.status === 'seen') {
@@ -1191,6 +1211,14 @@
     sset: function (d) { ui.keyEdit = {}; ui.keyConfirm = null; ui.sset = d.v; if (d.v === 'plats') { loadProviders(); ui.pvq = ''; } if (d.v === 'notif') refreshPush(); render(); },
     back: function () { if (ui.screen === 'settings' && ui.sset !== 'menu') { ui.sset = 'menu'; ui.keyEdit = {}; ui.keyConfirm = null; render(); return; } var h = ui.hist.pop(); if (h) { ui.screen = h.screen; ui.detail = h.detail; ui.sheet = null; render(true); } else go('home'); },
     open: function (d) { openDetail(d.id); },
+    share: function () {
+      var d = ui.dd; if (!d || !d.av) return;
+      var t = shareTarget(d); if (!t) return;
+      var txt = d.t + (d.y ? ' (' + d.y + ')' : '') + (t.name ? ' — à voir sur ' + t.name : ''), data = { title: d.t, text: txt, url: t.url };
+      if (navigator.share) { navigator.share(data).catch(function () {}); return; }
+      var all = txt + '\n' + t.url;
+      if (navigator.clipboard) navigator.clipboard.writeText(all).then(function () { toast('Lien copié'); }, function () { toast(all); }); else toast(all);
+    },
     want: function (d) {
       var e = entry(d.id); if (!e) return;
       var w = e.w || (function () { var o = {}; o[e.by] = true; return o; })();
