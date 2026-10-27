@@ -1,6 +1,6 @@
 {
-  "name": "mAIwatch",
-  "short_name": "mAIwatch",
+  "name": "Watch-It",
+  "short_name": "Watch-It",
   "description": "Notre liste de films et séries à voir, avec suggestions selon nos goûts et nos plateformes.",
   "start_url": "./",
   "scope": "./",

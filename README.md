@@ -1,4 +1,4 @@
-# mAIwatch
+# Watch-It
 
 Liste partagée de films et séries à voir, pour un foyer. Un seul compte, deux profils (par défaut « Moi » et « Elle », prénoms modifiables).
 
@@ -44,7 +44,7 @@ Variables d'environnement facultatives : `PORT` (3100), `DATA_DIR` (`./data`), `
 
 ## Déploiement sur un serveur (git + pm2 + nginx)
 
-mAIwatch écoute sur le port **3100** (modifiable avec la variable `PORT`) ; il tourne dans son propre dossier, derrière son propre nom de domaine.
+Watch-It écoute sur le port **3100** (modifiable avec la variable `PORT`) ; il tourne dans son propre dossier, derrière son propre nom de domaine.
 
 **1. Prérequis** : Node.js ≥ 22.5 (`node -v`), pm2 (`sudo npm install -g pm2`), nginx + certbot (`sudo apt-get install -y nginx certbot python3-certbot-nginx`), et un enregistrement DNS (type A) `films.tondomaine.fr` vers l'IP du serveur.
 

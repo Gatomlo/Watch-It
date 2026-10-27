@@ -34,7 +34,7 @@ function ensureSetupCode() {
     const h = crypto.randomBytes(6).toString("hex").toUpperCase();
     setupCode = h.slice(0, 4) + "-" + h.slice(4, 8) + "-" + h.slice(8, 12);
     console.warn(
-      "\n[mAIwatch] Aucun compte. Ouvrez le site et créez-le avec ce code d'installation :\n\n      " + setupCode + "\n"
+      "\n[Watch-It] Aucun compte. Ouvrez le site et créez-le avec ce code d'installation :\n\n      " + setupCode + "\n"
     );
   }
 }
@@ -68,7 +68,7 @@ function requireAuth(req, res, next) {
 const wrap = (fn) => (req, res) =>
   Promise.resolve(fn(req, res)).catch((e) => {
     const status = e.status || 500;
-    if (status >= 500 && status !== 503) console.warn("[mAIwatch]", req.method, req.path, e.message);
+    if (status >= 500 && status !== 503) console.warn("[Watch-It]", req.method, req.path, e.message);
     res.status(status).json({ error: e.message === "tmdb_not_configured" ? "tmdb_not_configured" : (e.message || "Erreur serveur.") });
   });
 
@@ -336,7 +336,7 @@ app.post("/api/push/prefs", requireAuth, (req, res) => {
   res.json({ prefs: push.setPrefs(ep, req.body.prefs) });
 });
 app.post("/api/push/test", requireAuth, wrap(async (req, res) => {
-  const n = await push.send({ title: "mAIwatch", body: "Les notifications fonctionnent sur cet appareil.", tag: "maiwatch-test", url: "./" }, req.body && req.body.endpoint);
+  const n = await push.send({ title: "Watch-It", body: "Les notifications fonctionnent sur cet appareil.", tag: "maiwatch-test", url: "./" }, req.body && req.body.endpoint);
   res.json({ sent: n });
 }));
 
@@ -364,7 +364,7 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log("[mAIwatch] Serveur démarré sur http://localhost:" + PORT);
+    console.log("[Watch-It] Serveur démarré sur http://localhost:" + PORT);
     push.start();
   });
 }

@@ -2,7 +2,7 @@
   "name": "maiwatch-server",
   "version": "1.0.0",
   "private": true,
-  "description": "mAIwatch : liste partagée de films et séries à voir, suggestions selon vos goûts et vos plateformes (TMDB), assistant d'envies facultatif (Claude, Gemini ou Mistral).",
+  "description": "Watch-It : liste partagée de films et séries à voir, suggestions selon vos goûts et vos plateformes (TMDB), assistant d'envies facultatif (Claude, Gemini ou Mistral).",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

@@ -108,7 +108,7 @@ async function watch() {
     } catch (err) {}
     const nm = (id) => names[id] || "une de vos plateformes";
     const body = gone.length === 1 ? "« " + gone[0].e.t + " » n'est plus sur " + nm(gone[0].p) + "." : gone.length + " titres de votre liste quittent vos plateformes : " + gone.slice(0, 3).map((g) => "« " + g.e.t + " »").join(", ") + ".";
-    await send({ title: "mAIwatch", body, tag: "maiwatch-gone", url: "./" }, null, "gone");
+    await send({ title: "Watch-It", body, tag: "maiwatch-gone", url: "./" }, null, "gone");
   }
   return { checked: todo.length, gone: gone.length };
 }
@@ -136,7 +136,7 @@ async function flushAdded() {
     const body = one ? who + " a ajouté « " + items[0].t + " ». Voulez-vous le voir aussi ?" : who + " a ajouté " + items.length + " titres : " + items.slice(0, 3).map((i) => "« " + i.t + " »").join(", ") + (items.length > 3 ? "…" : "") + ". Voulez-vous les voir aussi ?";
     // Boutons sous la notification (Android / ordinateur ; iPhone n'affiche que le texte) : le service worker appelle /api/react.
     const actions = one ? [{ action: "want", title: "Moi aussi" }, { action: "no", title: "Pas pour moi" }] : [{ action: "open", title: "Voir la liste" }];
-    await send({ title: "mAIwatch", body, tag: one ? "maiwatch-added-" + items[0].id : "maiwatch-added", url: "./?view=news", u: target, id: one ? items[0].id : null, actions }, null, "added", target).catch(() => {});
+    await send({ title: "Watch-It", body, tag: one ? "maiwatch-added-" + items[0].id : "maiwatch-added", url: "./?view=news", u: target, id: one ? items[0].id : null, actions }, null, "added", target).catch(() => {});
   }
 }
 
@@ -189,7 +189,7 @@ async function releaseCheck(now) {
   let sent = 0;
   for (const { r, mine } of jobs) {
     const body = mine.length === 1 ? "« " + mine[0].t + " » sort aujourd'hui." : mine.length + " titres de votre liste sortent : " + mine.slice(0, 3).map((e) => "« " + e.t + " »").join(", ") + (mine.length > 3 ? "…" : "") + ".";
-    try { await sender(JSON.parse(r.data), { title: "mAIwatch · Sortie", body, tag: "maiwatch-release", url: "./" }); sent++; }
+    try { await sender(JSON.parse(r.data), { title: "Watch-It · Sortie", body, tag: "maiwatch-release", url: "./" }); sent++; }
     catch (e) { if (e.statusCode === 404 || e.statusCode === 410) unsubscribe(r.endpoint); }
   }
   return { sent, due: due.length };

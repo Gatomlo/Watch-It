@@ -1,6 +1,8 @@
-# mAIwatch — films et séries à voir
+# Watch-It — films et séries à voir
 
 Appli web (PWA) pour un foyer : liste « À voir » / « Vus », notes par profil, suggestions, envies en langage naturel (IA facultative), import. Stack : Node ≥ 22.5 (`node:sqlite`), Express, JS vanilla sans build ; port 3100, base `data/app.db`.
+
+Nom affiché : **Watch-It**. Les identifiants techniques gardent volontairement « maiwatch » (clés localStorage `maiwatch-*`, tags de notification, dossier/pm2, contexte de chiffrement) : les renommer ferait perdre données locales et clés enregistrées.
 
 ## Fichiers clés
 - `src/server.js` : auth + `POST /api/setup` (création du compte à la première visite, code d'installation affiché dans la console), `/api/tmdb-key`, `GET/PUT /api/state` (version `X-State-Version`, `X-Base-Version` → 409), `/api/search|title|availability|providers|suggestions|envies|import`, `/api/ai` (clé IA), statiques.

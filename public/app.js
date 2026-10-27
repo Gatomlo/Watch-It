@@ -68,7 +68,7 @@
   function isIOS() { return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
   function installHidden() { try { return localStorage.getItem('maiwatch-install-hidden') === '1'; } catch (e) { return false; } }
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferredInstall = e; if (isAuthenticated) safeRender(); });
-  window.addEventListener('appinstalled', function () { deferredInstall = null; if (isAuthenticated) { toast('mAIwatch est installée.'); safeRender(); } });
+  window.addEventListener('appinstalled', function () { deferredInstall = null; if (isAuthenticated) { toast('Watch-It est installée.'); safeRender(); } });
   var KNOWN = {};           // fiches légères vues dans les résultats : id -> item
   try { var a = JSON.parse(localStorage.getItem('maiwatch-av') || 'null'); if (a && a.map) { AV = a.map; AV_AT = a.at || 0; } } catch (e) {}
   try { var pv0 = JSON.parse(localStorage.getItem('maiwatch-pv') || 'null'); if (pv0) { pv0.forEach(function (p) { PV[p.id] = p; }); PVL = pv0; } } catch (e) {}
@@ -581,8 +581,8 @@
   function installBanner() {
     if (isStandalone() || installHidden()) return '';
     var hide = '<button class="icon" style="width:44px;height:44px;flex:none" data-act="installhide" aria-label="Masquer ce message">' + I('close') + '</button>';
-    if (deferredInstall) return '<div class="inst" role="region" aria-label="Installer l’application"><div style="flex:1;min-width:0"><b>Installer mAIwatch</b><span class="help" style="display:block">En plein écran, comme une appli.</span></div><button class="btn" data-act="install">Installer</button>' + hide + '</div>';
-    if (isIOS()) return '<div class="inst" role="region" aria-label="Installer l’application"><div style="flex:1;min-width:0"><b>Installer mAIwatch</b><span class="help" style="display:block">Dans Safari : touchez Partager, puis « Sur l’écran d’accueil ».</span></div>' + hide + '</div>';
+    if (deferredInstall) return '<div class="inst" role="region" aria-label="Installer l’application"><div style="flex:1;min-width:0"><b>Installer Watch-It</b><span class="help" style="display:block">En plein écran, comme une appli.</span></div><button class="btn" data-act="install">Installer</button>' + hide + '</div>';
+    if (isIOS()) return '<div class="inst" role="region" aria-label="Installer l’application"><div style="flex:1;min-width:0"><b>Installer Watch-It</b><span class="help" style="display:block">Dans Safari : touchez Partager, puis « Sur l’écran d’accueil ».</span></div>' + hide + '</div>';
     return '';
   }
 
@@ -741,7 +741,7 @@
   V.add = function () {
     return '<header class="top tight">' + back().replace('Retour', 'Fermer').replace(I('back'), I('close')) + '<h1 class="s">Ajouter</h1></header>' + (!CFG.tmdb ? noTmdb() : '') +
       '<div class="field"><label for="q" style="position:absolute;left:-9999px">Rechercher un film ou une série</label>' + I('search') + '<input id="q" class="input" type="search" autocomplete="off" placeholder="Un film, une série…" value="' + esc(ui.q) + '"></div>' +
-      '<div class="tip">' + I('share') + '<span>Depuis Signal, un navigateur ou une appli de streaming : touchez Partager puis mAIwatch. Le titre se cherche tout seul. (Appli installée sur Android.)</span></div>' +
+      '<div class="tip">' + I('share') + '<span>Depuis Signal, un navigateur ou une appli de streaming : touchez Partager puis Watch-It. Le titre se cherche tout seul. (Appli installée sur Android.)</span></div>' +
       '<div class="group" id="results" style="gap:14px">' + addResults() + '</div>';
   };
 
@@ -1041,9 +1041,9 @@
 
   function setInstall() {
     var h = subHeader('Installer l’application');
-    if (isStandalone()) return h + '<div class="notice"><b>mAIwatch est déjà installée</b> sur cet appareil : ouvrez-la depuis son icône sur l’écran d’accueil.</div>';
+    if (isStandalone()) return h + '<div class="notice"><b>Watch-It est déjà installée</b> sur cet appareil : ouvrez-la depuis son icône sur l’écran d’accueil.</div>';
     var secure = location.protocol === 'https:' || location.hostname === 'localhost';
-    h += '<p class="help" style="margin:0;line-height:1.5">Installée, mAIwatch s’ouvre en plein écran comme une appli, fonctionne hors ligne et, sur Android, apparaît dans le menu Partager (par exemple depuis Signal) pour ajouter un titre.</p>';
+    h += '<p class="help" style="margin:0;line-height:1.5">Installée, Watch-It s’ouvre en plein écran comme une appli, fonctionne hors ligne et, sur Android, apparaît dans le menu Partager (par exemple depuis Signal) pour ajouter un titre.</p>';
     if (!secure) h += '<div class="notice">L’installation exige une adresse en <b>https://</b>. Ouvrez le site avec cette adresse.</div>';
     if (deferredInstall) h += '<button class="btn" data-act="install">Installer maintenant</button>';
     else h += '<div class="notice">Le navigateur ne propose pas le bouton d’installation sur cet appareil pour l’instant. Suivez le mode d’emploi ci-dessous.</div>';
@@ -1170,7 +1170,7 @@
   }
 
   function setupView() {
-    return '<div class="login"><form data-form="setup"><img src="' + BASE + '/logo.svg" alt=""><h1>Bienvenue sur mAIwatch</h1><p class="sub" style="margin:0">Créez le compte du foyer. Il sera partagé par les deux profils.</p>' +
+    return '<div class="login"><form data-form="setup"><img src="' + BASE + '/logo.svg" alt=""><h1>Bienvenue sur Watch-It</h1><p class="sub" style="margin:0">Créez le compte du foyer. Il sera partagé par les deux profils.</p>' +
       (ui.loginError ? '<p class="err">' + esc(ui.loginError) + '</p>' : '') +
       '<label>Identifiant<input type="text" name="username" required maxlength="40" autocomplete="username"></label>' +
       '<label>Mot de passe (8 caractères minimum)<input type="password" name="password" required minlength="8" autocomplete="new-password"></label>' +
@@ -1179,7 +1179,7 @@
       '<button type="submit" class="btn">Créer le compte</button></form></div>';
   }
   function loginView() {
-    return '<div class="login"><form data-form="login"><img src="' + BASE + '/logo.svg" alt=""><h1>mAIwatch</h1><p class="sub" style="margin:0">Notre liste de films et séries</p>' +
+    return '<div class="login"><form data-form="login"><img src="' + BASE + '/logo.svg" alt=""><h1>Watch-It</h1><p class="sub" style="margin:0">Notre liste de films et séries</p>' +
       (ui.loginError ? '<p class="err">' + esc(ui.loginError) + '</p>' : '') +
       '<label>Identifiant<input type="text" name="username" required autocomplete="username"></label><label>Mot de passe<input type="password" name="password" required autocomplete="current-password"></label>' +
       '<label class="rem"><input type="checkbox" name="remember" checked> Rester connecté sur cet appareil</label><button type="submit" class="btn">Se connecter</button></form></div>';

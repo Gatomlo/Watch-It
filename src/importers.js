@@ -32,7 +32,7 @@ async function lean(id, region) {
 async function letterboxd(user, region) {
   user = clean(user);
   if (!user) { const e = new Error("Indiquez le nom d'utilisateur Letterboxd."); e.status = 400; throw e; }
-  const res = await fetch(LB + "/" + user + "/rss/", { headers: { "User-Agent": "mAIwatch" }, signal: AbortSignal.timeout(20000) });
+  const res = await fetch(LB + "/" + user + "/rss/", { headers: { "User-Agent": "Watch-It" }, signal: AbortSignal.timeout(20000) });
   if (res.status === 404) { const e = new Error("Profil Letterboxd introuvable (il doit être public)."); e.status = 404; throw e; }
   if (!res.ok) { const e = new Error("Letterboxd ne répond pas (" + res.status + ")."); e.status = 502; throw e; }
   const xml = await res.text();
@@ -57,7 +57,7 @@ function saveTrakt(k) { store.setSecret("trakt_client", encrypt(k.trim())); }
 function clearTrakt() { store.deleteSecret("trakt_client"); }
 
 async function traktGet(path, client) {
-  const res = await fetch(TRAKT + path, { headers: { "trakt-api-version": "2", "trakt-api-key": client, "User-Agent": "mAIwatch" }, signal: AbortSignal.timeout(20000) });
+  const res = await fetch(TRAKT + path, { headers: { "trakt-api-version": "2", "trakt-api-key": client, "User-Agent": "Watch-It" }, signal: AbortSignal.timeout(20000) });
   if (res.status === 401 || res.status === 403) { const e = new Error("Trakt refuse ce Client ID, ou le profil n'est pas public."); e.status = 400; throw e; }
   if (res.status === 404) { const e = new Error("Profil Trakt introuvable."); e.status = 404; throw e; }
   if (!res.ok) { const e = new Error("Trakt ne répond pas (" + res.status + ")."); e.status = 502; throw e; }

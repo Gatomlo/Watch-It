@@ -64,7 +64,7 @@ self.addEventListener('fetch', function (e) {
 self.addEventListener('push', function (e) {
   var data = {};
   try { data = e.data ? e.data.json() : {}; } catch (err) {}
-  e.waitUntil(self.registration.showNotification(data.title || 'mAIwatch', {
+  e.waitUntil(self.registration.showNotification(data.title || 'Watch-It', {
     body: data.body || '', icon: 'icon-192.png', badge: 'icon-192.png', tag: data.tag || 'maiwatch', actions: data.actions || [],
     data: { url: data.url || './', id: data.id || null, u: data.u || null }
   }));
@@ -78,7 +78,7 @@ self.addEventListener('notificationclick', function (e) {
     e.waitUntil(fetch('api/react', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: d.id, u: d.u, want: e.action === 'want' }) })
       .then(function (r) { if (!r.ok) throw new Error('react'); return r.json(); })
       .then(function (r) {
-        return self.registration.showNotification('mAIwatch', { body: e.action === 'want' ? '« ' + r.title + ' » ajouté à ce que vous voulez voir.' : '« ' + r.title + ' » écarté.', icon: 'icon-192.png', tag: e.notification.tag, silent: true })
+        return self.registration.showNotification('Watch-It', { body: e.action === 'want' ? '« ' + r.title + ' » ajouté à ce que vous voulez voir.' : '« ' + r.title + ' » écarté.', icon: 'icon-192.png', tag: e.notification.tag, silent: true })
           .then(function () { return new Promise(function (ok) { setTimeout(ok, 4000); }); })
           .then(function () { return self.registration.getNotifications({ tag: e.notification.tag }); })
           .then(function (l) { l.forEach(function (n) { n.close(); }); });
