@@ -4,8 +4,8 @@
 // - /api/… : jamais touché ici ; l'app garde elle-même ses données (localStorage) et les synchronise au retour du réseau.
 // - Notifications push : affichage et ouverture de l'appli au toucher.
 // Changer VERSION quand la liste FILES change.
-var VERSION = 'mw-v2';
-var FILES = ['./', 'index.html', 'app.js', 'styles.css', 'manifest.json', 'logo.svg', 'logo.png', 'icon-192.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
+var VERSION = 'mw-v3';
+var FILES = ['./', 'index.html', 'app.js', 'styles.css', 'manifest.json', 'logo.svg', 'logo.png', 'icon-192.png', 'badge-96.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
 var TIMEOUT_MS = 4000;
 var MEDIA_CACHE = 'mw-media';
 
@@ -65,7 +65,7 @@ self.addEventListener('push', function (e) {
   var data = {};
   try { data = e.data ? e.data.json() : {}; } catch (err) {}
   e.waitUntil(self.registration.showNotification(data.title || 'Watch-It', {
-    body: data.body || '', icon: 'icon-192.png', badge: 'icon-192.png', tag: data.tag || 'maiwatch', actions: data.actions || [],
+    body: data.body || '', icon: 'icon-192.png', badge: 'badge-96.png', tag: data.tag || 'maiwatch', actions: data.actions || [],
     data: { url: data.url || './', id: data.id || null, u: data.u || null }
   }));
 });
