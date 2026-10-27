@@ -269,3 +269,7 @@ a.card .ico{flex:none;opacity:.6}
 .newsb{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:left;cursor:pointer;color:inherit;font:inherit}
 .decide{display:flex;gap:8px;margin-left:82px}
 .decide .chip{height:36px;padding:0 14px;font-size:13px}
+
+/* --- Liste déroulante de listes (fiche) --- */
+.combo{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:14px;border:1px solid var(--line);background:var(--surface)}
+#collist{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto}

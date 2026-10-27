@@ -77,7 +77,7 @@
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
     tab: 'me', sug: {}, sugOff: {}, mi: {}, sugVer: 0, epOpen: false, epSeason: null, epData: {}, epExp: {}, epErr: {}, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
     impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false,
-    sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], who: 'all', lk: {}, drawWho: 'both', saMode: null, saMsg: '', saBusy: false, tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
+    sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], who: 'all', lk: {}, colOpen: null, colq: '', noteEdit: null, noteDraft: null, drawWho: 'both', saMode: null, saMsg: '', saBusy: false, tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
   };
   var booted = false, isAuthenticated = false, currentUsername = '';
 
@@ -480,6 +480,13 @@
     var o = me === 'M' ? 'E' : 'M';
     return S.list.filter(function (e) { return e.status === 'todo' && e.by === o && !wants(e, me) && !(e.no && e.no[me]); }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
   }
+  // Listes qui ne sont pas encore cochées sur la fiche, filtrées par la recherche.
+  function colList(id) {
+    var e = entry(id), q = norm(ui.colq), have = (e && e.l) || [];
+    var rest = S.collections.filter(function (c) { return have.indexOf(c.id) < 0 && (!q || norm(c.name).indexOf(q) >= 0); });
+    if (!rest.length) return '<span class="help">' + (q ? 'Aucune liste ne correspond à « ' + esc(ui.colq) + ' ».' : 'Toutes les listes sont déjà cochées.') + '</span>';
+    return rest.map(function (c) { return '<button class="mi" data-act="coltog" data-id="' + esc(id) + '" data-c="' + esc(c.id) + '"><span class="ct"><b>' + esc(c.name) + '</b></span></button>'; }).join('');
+  }
   function avas(e) { return '<span class="avs">' + ['M', 'E'].filter(function (u) { return wants(e, u); }).map(function (u) { return '<span class="ava ' + u + '" aria-label="' + esc(pname(u)) + ' veut le voir">' + esc(initial(u)) + '</span>'; }).join('') + '</span>'; }
   function rowHtml(it, e) {
     var b = '<button class="row" data-act="open" data-id="' + esc(it.id) + '">' + poster(it) + '<span class="rb"><span class="rt"><span class="title">' + esc(it.t) + '</span>' + (e ? avas(e) : '') + '</span><span class="meta">' + meta(it) + '</span>' + badges(it) + '</span></button>';
@@ -678,10 +685,20 @@
     }
     var colg = '';
     if (e) {
-      colg = '<div class="group"><h2>Listes</h2>' + (S.collections.length ? '<div class="chips">' + S.collections.map(function (c) { var on = (e.l || []).indexOf(c.id) >= 0; return '<button class="chip p' + (on ? ' on' : '') + '" data-act="coltog" data-id="' + esc(id) + '" data-c="' + esc(c.id) + '" aria-pressed="' + on + '">' + esc(c.name) + '</button>'; }).join('') + '</div>' : '<span class="help">Aucune liste pour l’instant : « Halloween », « Avec les enfants », « Vacances »…</span>') +
-        '<div style="display:flex;gap:8px"><label for="newcol-d" style="position:absolute;left:-9999px">Nouvelle liste</label><input id="newcol-d" class="fld" maxlength="30" placeholder="Nouvelle liste" autocomplete="off"><button class="btn ghost" style="flex:none;width:auto;height:48px" data-act="coladd" data-id="' + esc(id) + '">Créer</button></div></div>';
+      var onC = S.collections.filter(function (c) { return (e.l || []).indexOf(c.id) >= 0; });
+      var toks2 = onC.length ? '<div class="toks">' + onC.map(function (c) { return '<button class="tok" data-act="coltog" data-id="' + esc(id) + '" data-c="' + esc(c.id) + '" aria-label="Retirer de la liste ' + esc(c.name) + '">' + esc(c.name) + I('close') + '</button>'; }).join('') + '</div>' : '';
+      var picker;
+      if (!S.collections.length) picker = '<span class="help">Aucune liste pour l’instant. Créez-les dans <button class="link" style="padding:0;min-height:0;color:var(--fg)" data-act="push" data-to="settings">Réglages</button> &gt; Listes thématiques (« Halloween », « Avec les enfants »…).</span>';
+      else if (ui.colOpen === id) picker = '<div class="combo"><label for="colq" style="position:absolute;left:-9999px">Chercher une liste</label><input id="colq" class="fsearch" type="search" autocomplete="off" placeholder="Chercher une liste" value="' + esc(ui.colq) + '"><div id="collist">' + colList(id) + '</div><button class="link" style="align-self:center" data-act="colclose">Fermer</button></div>';
+      else picker = '<button class="btn ghost" style="height:44px" data-act="colopen" data-id="' + esc(id) + '">' + (onC.length ? 'Ajouter à une autre liste' : 'Ajouter à une liste') + '</button>';
+      colg = '<div class="group"><h2>Listes</h2>' + toks2 + picker + '</div>';
     }
-    var note = e ? '<div class="group"><h2>Notre note</h2><label for="note" style="position:absolute;left:-9999px">Note sur ce titre</label><textarea id="note" class="ta" rows="2" placeholder="Pourquoi on veut le voir, qui l’a conseillé…" data-note="' + esc(id) + '">' + esc(e.note || '') + '</textarea>' + (e.status === 'todo' ? '' : '<span class="help">Ajouté par ' + esc(pname(e.by)) + ' le ' + fmtDate(e.at) + '</span>') + '</div>' : '';
+    var note = '';
+    if (e) {
+      var by = e.status === 'todo' ? '' : '<span class="help">Ajouté par ' + esc(pname(e.by)) + ' le ' + fmtDate(e.at) + '</span>';
+      if (ui.noteEdit === id) note = '<div class="group"><h2>Notre note</h2><label for="note" style="position:absolute;left:-9999px">Note sur ce titre</label><textarea id="note" class="ta" rows="3" placeholder="Pourquoi on veut le voir, qui l’a conseillé…" data-draft="1">' + esc(ui.noteDraft != null ? ui.noteDraft : (e.note || '')) + '</textarea><div style="display:flex;gap:10px"><button class="btn ghost" style="height:44px" data-act="notecancel">Annuler</button><button class="btn" style="height:44px" data-act="notesave" data-id="' + esc(id) + '">Enregistrer</button></div></div>';
+      else note = '<div class="group"><div class="sec"><h2>Notre note</h2><button class="link" style="min-height:44px" data-act="noteedit" data-id="' + esc(id) + '">' + (e.note ? 'Modifier' : 'Ajouter une note') + '</button></div>' + (e.note ? '<p class="syn" style="margin:0;white-space:pre-wrap;overflow-wrap:anywhere">' + esc(e.note) + '</p>' : '<span class="help">Pas de note pour l’instant.</span>') + by + '</div>';
+    }
     var dock;
     var rm = '<button class="icon" style="width:52px;height:52px;border-radius:26px" data-act="remove" data-id="' + esc(id) + '" aria-label="Supprimer de la liste">' + I('trash') + '</button>';
     if (!e) dock = '<button class="btn" data-act="add" data-id="' + esc(id) + '">Ajouter à ma liste</button><button class="btn ghost" style="flex:none;width:auto" data-act="already" data-id="' + esc(id) + '">Déjà vu</button>';
@@ -1222,7 +1239,7 @@
   function openDetail(id) {
     ui.sheet = null;
     ui.hist.push({ screen: ui.screen, detail: ui.detail });
-    ui.detail = id; ui.screen = 'detail'; ui.dd = null; ui.epOpen = false; ui.epSeason = null; ui.epExp = {};
+    ui.detail = id; ui.screen = 'detail'; ui.dd = null; ui.epOpen = false; ui.epSeason = null; ui.epExp = {}; ui.colOpen = null; ui.colq = ''; ui.noteEdit = null; ui.noteDraft = null;
     render();
     api('/api/title/' + encodeURIComponent(id)).then(function (d) {
       if (ui.detail !== id) return;
@@ -1583,14 +1600,18 @@
       var e = entry(d.id); if (!e) return; e.l = e.l || [];
       var i = e.l.indexOf(d.c); if (i >= 0) e.l.splice(i, 1); else e.l.push(d.c);
       if (!e.l.length) delete e.l;
+      ui.colOpen = null; ui.colq = '';
       save(); render(true);
     },
-    coladd: function (d) {
-      var e = entry(d.id), inp = document.getElementById('newcol-d'), name = inp ? inp.value.trim() : ''; if (!e || !name) { toast('Donnez un nom à la liste.'); return; }
-      var c = S.collections.filter(function (x) { return x.name.toLowerCase() === name.toLowerCase(); })[0];
-      if (!c) { c = { id: 'c' + Date.now().toString(36), name: name }; S.collections.push(c); }
-      e.l = e.l || []; if (e.l.indexOf(c.id) < 0) e.l.push(c.id);
-      save(); render(true); toast('Ajouté à la liste « ' + c.name + ' »');
+    colopen: function (d) { ui.colOpen = d.id; ui.colq = ''; render(true); var i = document.getElementById('colq'); if (i) i.focus(); },
+    colclose: function () { ui.colOpen = null; ui.colq = ''; render(true); },
+    noteedit: function (d) { var e = entry(d.id); ui.noteEdit = d.id; ui.noteDraft = e ? e.note || '' : ''; render(true); var t = document.getElementById('note'); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } },
+    notecancel: function () { ui.noteEdit = null; ui.noteDraft = null; render(true); },
+    notesave: function (d) {
+      var e = entry(d.id), t = document.getElementById('note'); if (!e) return;
+      var v = (t ? t.value : ui.noteDraft || '').trim();
+      if (v) e.note = v; else delete e.note;
+      ui.noteEdit = null; ui.noteDraft = null; save(); render(true); toast(v ? 'Note enregistrée' : 'Note supprimée');
     },
     colnew: function () {
       var inp = document.getElementById('newcol'), name = inp ? inp.value.trim() : ''; if (!name) { toast('Donnez un nom à la liste.'); return; }
@@ -1649,7 +1670,8 @@
     else if (t.id === 'pvq') { ui.pvq = t.value; var plist = document.getElementById('pvlist'); if (plist) plist.innerHTML = platRows(); }
     else if (t.id === 'envie') ui.envie = t.value;
     else if (t.id === 'imp') ui.impText = t.value;
-    else if (t.dataset && t.dataset.note) { var e = entry(t.dataset.note); if (e) { e.note = t.value; clearTimeout(A._nt); A._nt = setTimeout(save, 600); } }
+    else if (t.id === 'colq') { ui.colq = t.value; var cl = document.getElementById('collist'); if (cl) cl.innerHTML = colList(ui.colOpen); }
+    else if (t.dataset && t.dataset.draft) ui.noteDraft = t.value;
   });
   document.addEventListener('change', function (ev) {
     var t = ev.target;
