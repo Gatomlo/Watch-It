@@ -33,4 +33,4 @@ Appli web (PWA) pour un foyer : liste « À voir » / « Vus », notes par profi
 - `npm install`, `npm start` (aucun `.env` : compte créé à la première visite avec le code d'installation de la console, clés TMDB et IA saisies dans l'appli). Test isolé : `PORT`, `DATA_DIR` et `TMDB_BASE` (faux TMDB) dédiés ; `AI_BASE_CLAUDE|GEMINI|MISTRAL` pour un faux fournisseur IA.
 - Pas de tests automatisés ; vérifier au minimum `node --check` sur chaque fichier modifié.
 - Ne jamais versionner `.env`, `data/` (base et `keys.json`). Ne jamais mettre de clé API dans le dépôt ni dans le navigateur.
-- Git : https://github.com/Gatomlo/mAIwatch (public).
+- Git : https://github.com/Gatomlo/Watch-It (public).

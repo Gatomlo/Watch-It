@@ -17,7 +17,7 @@ Stack : Node.js ≥ 22.5 (`node:sqlite`), Express, front en JS vanilla sans buil
 ## Démarrage
 
 ```bash
-git clone https://github.com/Gatomlo/mAIwatch.git && cd mAIwatch
+git clone https://github.com/Gatomlo/Watch-It.git maiwatch && cd maiwatch
 npm install
 npm start          # http://localhost:3100
 ```
@@ -52,7 +52,7 @@ mAIwatch écoute sur le port **3100** (modifiable avec la variable `PORT`) ; il 
 
 ```bash
 cd /home/debian
-git clone https://github.com/Gatomlo/mAIwatch.git maiwatch
+git clone https://github.com/Gatomlo/Watch-It.git maiwatch
 cd maiwatch
 npm install --omit=dev
 pm2 start src/server.js --name maiwatch

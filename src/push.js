@@ -52,7 +52,7 @@ const isSubscribed = (endpoint) => !!store.db.prepare("SELECT 1 FROM push_subs W
 let sender = async (sub, payload) => {
   const v = vapid();
   await webpush.sendNotification(sub, JSON.stringify(payload), {
-    vapidDetails: { subject: "https://github.com/Gatomlo/mAIwatch", publicKey: v.pub, privateKey: v.priv }, TTL: 86400,
+    vapidDetails: { subject: "https://github.com/Gatomlo/Watch-It", publicKey: v.pub, privateKey: v.priv }, TTL: 86400,
   });
 };
 function setSender(fn) { sender = fn; }
