@@ -768,7 +768,7 @@
     ui.sug[tab] = Object.assign({}, ui.sug[tab] || {}, { st: 'loading', ver: ver, items: (ui.sug[tab] && ui.sug[tab].items) || null });
     api('/api/suggestions?tab=' + tab + '&me=' + me).then(function (items) {
       items.forEach(function (x) { know(x.item); });
-      ui.sug[tab] = { st: 'ok', ver: ver, items: items }; ui.sugOff[tab] = 0;
+      ui.sug[tab] = { st: 'ok', ver: ver, items: items };
     }).catch(function (e) { ui.sug[tab] = { st: 'err', ver: ver, err: e.message, items: null }; }).finally(function () {
       if (ui.screen === 'sug') safeRender();
     });
@@ -1416,7 +1416,7 @@
         .catch(function (e) { ui.env = { error: e.message }; })
         .finally(function () { ui.envBusy = false; if (ui.screen === 'envies') render(true); });
     },
-    profile: function (d) { me = d.u; try { localStorage.setItem('maiwatch-me', me); } catch (e) {} ui.sugVer++; render(true); },
+    profile: function (d) { me = d.u; try { localStorage.setItem('maiwatch-me', me); } catch (e) {} ui.sugVer++; ui.sugOff = {}; render(true); },
     aiprov: function (d) { CFG.ai.provider = d.v; ui.aiDraftModel = null; ui.aiModels = null; render(true); },
     aipick: function (d) { var i = document.getElementById('aimodel'); if (i) i.value = d.v; ui.aiDraftModel = d.v; },
     aimodels: function () {
