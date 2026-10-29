@@ -203,6 +203,19 @@
     baseVersion = version;
     ui.sugVer++;
     persistLocal();
+    if (matchApply()) setTimeout(save, 0);
+  }
+  // Un match (envie des deux) met le titre dans la liste « À voir », voulu par les deux ; sans effet si déjà fait.
+  function matchApply() {
+    var m = S && S.match, changed = false; if (!m || m.st === 'wait' || m.st === 'no') return false;
+    matchResults(m).forEach(function (c) {
+      var e = entry(c.id);
+      if (!e) { e = addEntry(c, 'todo'); e.w = { M: true, E: true }; changed = true; ui.matchNew = true; return; }
+      if (e.status !== 'todo') return;
+      if (!e.w || !e.w.M || !e.w.E) { e.w = { M: true, E: true }; changed = true; }
+      if (e.no) { delete e.no; changed = true; }
+    });
+    return changed;
   }
   function handleUnauthorized() { isAuthenticated = false; render(); }
 
@@ -932,7 +945,7 @@
     h += '<div class="group"><div class="sec"><h2>Matchs</h2><span class="mbad">' + res.length + '</span></div>' + (res.length ? res.map(function (c) {
       var inL = entry(c.id);
       return '<div class="sug" style="align-items:center"><button class="row" style="gap:12px;align-items:center" data-act="open" data-id="' + esc(c.id) + '">' + poster(c, 'sm') + '<span class="rb"><span class="title" style="font-size:16px">' + esc(c.t) + '</span><span class="meta" style="font-size:12px">' + meta(c) + '</span></span></button>' +
-        (inL ? '<span class="st ok">Dans la liste</span>' : '<button class="round" data-act="matchadd" data-id="' + esc(c.id) + '" aria-label="Ajouter ' + esc(c.t) + ' à la liste">' + I('plus') + '</button>') + '</div>';
+        (inL ? '<span class="st ok">' + (inL.status === 'seen' ? 'Vu' : 'Dans la liste') + '</span>' : '') + '</div>';
     }).join('') : '<div class="empty">Pas encore de titre voulu par vous deux.</div>') + '</div>' +
       '<div class="group"><h2>Nouvelle partie</h2>' + matchTypeSeg() + matchSrcSeg() + '<button class="btn ghost" style="height:44px" data-act="matchstart">Lancer et inviter ' + esc(pname(ot)) + '</button></div>';
     return h;
@@ -1606,7 +1619,10 @@
       var m = S.match; if (!m || m.st === 'wait' || m.st === 'no') return;
       m.votes[me] = m.votes[me] || {}; m.votes[me][d.id] = +d.v; save(); render(true);
       var c = m.deck.filter(function (x) { return x.id === d.id; })[0];
-      if (+d.v === 1 && ((m.votes[other(me)] || {})[d.id] === 1) && c) toast('C’est un match : « ' + c.t + ' » !');
+      if (+d.v === 1 && ((m.votes[other(me)] || {})[d.id] === 1) && c) {
+        if (matchApply()) { save(); refreshAvail(); render(true); }
+        toast('C’est un match : « ' + c.t + ' » ajouté à votre liste !');
+      }
     },
     matchseen: function (d) {
       var m = S.match, c = m && m.deck.filter(function (x) { return x.id === d.id; })[0]; if (!c) return;
@@ -1614,10 +1630,6 @@
       if (!e) addEntry(c, 'seen'); else { e.status = 'seen'; e.at = todayISO(); }
       m.votes[me] = m.votes[me] || {}; m.votes[me][c.id] = -1; // un titre déjà vu ne peut pas être un match
       save(); ui.sheet = { type: 'rate', id: c.id }; render(true);
-    },
-    matchadd: function (d) {
-      var m = S.match, c = m && m.deck.filter(function (x) { return x.id === d.id; })[0]; if (!c || entry(c.id)) return;
-      addEntry(c, 'todo'); save(); render(true); refreshAvail(); toast('« ' + c.t + ' » ajouté à la liste');
     },
     pushon: function () {
       ui.push.msg = '';
