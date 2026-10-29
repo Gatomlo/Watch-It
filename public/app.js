@@ -614,8 +614,8 @@
   }
   function matchInviteBanner() {
     var m = S.match, o = me === 'M' ? 'E' : 'M';
-    if (!m || !m.by || m.by === me || matchDone(m, me)) return '';
-    return '<button class="notice newsb" data-act="gomatch"><span><b>' + esc(pname(o)) + ' vous invite à un Match à deux</b><br><span class="help">' + (m.ty === 'film' ? 'Films' : m.ty === 'serie' ? 'Séries' : 'Films et séries') + ' · ' + (m.deck.length - m.deck.filter(function (c) { return (m.votes[me] || {})[c.id]; }).length) + ' titres à balayer</span></span>' + I('chev') + '</button>';
+    if (!m || m.st !== 'wait' || m.by === me) return '';
+    return '<button class="notice newsb" data-act="gomatch"><span><b>' + esc(pname(o)) + ' vous invite à un Match à deux</b><br><span class="help">' + (m.ty === 'film' ? 'Films' : m.ty === 'serie' ? 'Séries' : 'Films et séries') + ' · à accepter pour commencer</span></span>' + I('chev') + '</button>';
   }
 
   V.home = function () {
@@ -898,11 +898,20 @@
   }
   function matchView() {
     var m = S.match, ot = other(me), h = '';
+    if (m && m.st === 'no' && m.by !== me) m = null; // refus : l'autre revoit l'écran de lancement
     if (ui.matchBusy) return skeletons(2);
     if (!m) {
       return '<div class="notice"><b>Match à deux.</b> Chacun de son côté (sur son téléphone), vous balayez une même sélection de titres : « Envie » ou « Pas envie ». Les titres que vous voulez tous les deux apparaissent ici.</div>' +
         matchTypeSeg() + '<button class="btn" data-act="matchstart">Lancer et inviter ' + esc(pname(ot)) + '</button><span class="help">La sélection mélange votre liste « À voir » et des suggestions pour vous deux, sur vos plateformes.</span>';
     }
+    var tyw = m.ty === 'film' ? 'de films' : m.ty === 'serie' ? 'de séries' : 'de films et séries';
+    if (m.st === 'wait') {
+      if (m.by === me) return '<div class="notice"><b>Invitation envoyée à ' + esc(pname(ot)) + '.</b> La partie ' + tyw + ' commencera dès qu’il ou elle l’aura acceptée.</div>' +
+        '<button class="btn ghost" style="height:44px" data-act="matchinvite">Relancer ' + esc(pname(ot)) + ' (notification)</button><button class="btn ghost" style="height:44px" data-act="matchcancel">Annuler la partie</button>';
+      return '<div class="notice"><b>' + esc(pname(m.by)) + ' vous invite à un Match à deux ' + tyw + '.</b> ' + m.deck.length + ' titres à balayer chacun de votre côté.</div>' +
+        '<div class="decide"><button class="chip on" data-act="matchaccept">Accepter</button><button class="chip" data-act="matchdecline">Refuser</button></div>';
+    }
+    if (m.st === 'no' && m.by === me) return '<div class="notice"><b>' + esc(pname(ot)) + ' ne veut pas jouer pour l’instant.</b></div><button class="btn ghost" style="height:44px" data-act="matchcancel">OK</button>';
     var cur = matchCur(m), res = matchResults(m), tyl = m.ty === 'film' ? 'Films' : m.ty === 'serie' ? 'Séries' : 'Films et séries', voted = m.deck.filter(function (c) { return matchMine(m)[c.id]; }).length;
     if (cur) {
       var av = (cur.f || []).filter(function (p) { return platsOn().indexOf(p) >= 0; }), info = matchInfo(cur);
@@ -922,7 +931,6 @@
       return '<div class="sug" style="align-items:center"><button class="row" style="gap:12px;align-items:center" data-act="open" data-id="' + esc(c.id) + '">' + poster(c, 'sm') + '<span class="rb"><span class="title" style="font-size:16px">' + esc(c.t) + '</span><span class="meta" style="font-size:12px">' + meta(c) + '</span></span></button>' +
         (inL ? '<span class="st ok">Dans la liste</span>' : '<button class="round" data-act="matchadd" data-id="' + esc(c.id) + '" aria-label="Ajouter ' + esc(c.t) + ' à la liste">' + I('plus') + '</button>') + '</div>';
     }).join('') : '<div class="empty">Pas encore de titre voulu par vous deux.</div>') + '</div>' +
-      (!matchDone(m, ot) ? '<button class="btn ghost" style="height:44px" data-act="matchinvite">Inviter ' + esc(pname(ot)) + ' (notification)</button>' : '') +
       '<div class="group"><h2>Nouvelle partie</h2>' + matchTypeSeg() + '<button class="btn ghost" style="height:44px" data-act="matchstart">Lancer et inviter ' + esc(pname(ot)) + '</button></div>';
     return h;
   }
@@ -1564,9 +1572,12 @@
         return Promise.all(deck.map(function (c) {
           if (typeof c.ov === 'string') return null;
           return api('/api/title/' + encodeURIComponent(c.id)).then(function (d) { c.ov = (d.ov || '').slice(0, 280); if (d.trailer) c.tr = d.trailer; }).catch(function () { c.ov = ''; });
-        })).then(function () { S.match = { id: Date.now().toString(36), deck: deck, votes: { M: {}, E: {} }, at: todayISO(), ty: ty, by: me }; save(); toast(pname(me === 'M' ? 'E' : 'M') + ' est invité(e) à jouer.'); });
+        })).then(function () { S.match = { id: Date.now().toString(36), deck: deck, votes: { M: {}, E: {} }, at: todayISO(), ty: ty, by: me, st: 'wait' }; save(); toast('Invitation envoyée : la partie commence quand ' + pname(me === 'M' ? 'E' : 'M') + ' accepte.'); });
       }).finally(function () { ui.matchBusy = false; render(true); });
     },
+    matchaccept: function () { if (S.match && S.match.st === 'wait') { S.match.st = 'on'; save(); render(true); } },
+    matchdecline: function () { if (S.match && S.match.st === 'wait') { S.match.st = 'no'; save(); render(true); } },
+    matchcancel: function () { S.match = null; save(); render(true); },
     matchty: function (d) { ui.matchTy = d.v; render(true); },
     gomatch: function () { ui.hist = []; ui.screen = 'envies'; ui.cs = 'match'; ui.sheet = null; render(); },
     matchinvite: function () {
@@ -1583,7 +1594,7 @@
     },
     tonightclear: function () { S.tonight = null; save(); render(true); },
     matchvote: function (d) {
-      var m = S.match; if (!m) return;
+      var m = S.match; if (!m || m.st === 'wait' || m.st === 'no') return;
       m.votes[me] = m.votes[me] || {}; m.votes[me][d.id] = +d.v; save(); render(true);
       var c = m.deck.filter(function (x) { return x.id === d.id; })[0];
       if (+d.v === 1 && ((m.votes[other(me)] || {})[d.id] === 1) && c) toast('C’est un match : « ' + c.t + ' » !');

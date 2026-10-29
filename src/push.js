@@ -159,16 +159,18 @@ function react(id, u, want) {
 // --- Match à deux et « Proposer ce soir » : l'autre profil est prévenu quand l'état change ---
 const nameOf = (u) => ((store.getState().settings || {}).profiles || {})[u] || (u === "M" ? "Moi" : "Elle");
 const TYPES = { film: "de films", serie: "de séries" };
-function matchBody(m) { return nameOf(m.by) + " vous invite à un Match à deux" + (TYPES[m.ty] ? " " + TYPES[m.ty] : "") + ". Chacun balaye la même sélection !"; }
+function matchBody(m) { return nameOf(m.by) + " vous invite à un Match à deux" + (TYPES[m.ty] ? " " + TYPES[m.ty] : "") + ". Acceptez pour commencer !"; }
 function notifyMatch(before, after) {
-  const m = after.match;
-  if (!m || (m.by !== "M" && m.by !== "E") || (before && before.match && before.match.id === m.id)) return;
-  send({ title: "Watch-It · Match à deux", body: matchBody(m), tag: "maiwatch-match", url: "./?view=match" }, null, "match", other(m.by)).catch(() => {});
+  const m = after.match, bm = before && before.match;
+  if (!m || (m.by !== "M" && m.by !== "E")) return;
+  if (!bm || bm.id !== m.id) { if (m.st === "wait") send({ title: "Watch-It · Match à deux", body: matchBody(m), tag: "maiwatch-match", url: "./?view=match" }, null, "match", other(m.by)).catch(() => {}); return; }
+  // Réponse de l'invité(e) : prévient celui ou celle qui a lancé la partie.
+  if (bm.st === "wait" && (m.st === "on" || m.st === "no")) send({ title: "Watch-It · Match à deux", body: nameOf(other(m.by)) + (m.st === "on" ? " a accepté : la partie commence !" : " ne veut pas jouer pour l'instant."), tag: "maiwatch-match", url: "./?view=match" }, null, "match", m.by).catch(() => {});
 }
 // Relance manuelle (bouton « Inviter » de la partie en cours).
 async function inviteMatch(from) {
   const m = store.getState().match;
-  if ((from !== "M" && from !== "E") || !m) { const e = new Error("Aucune partie en cours."); e.status = 404; throw e; }
+  if ((from !== "M" && from !== "E") || !m || m.st !== "wait") { const e = new Error("Aucune partie en cours."); e.status = 404; throw e; }
   return send({ title: "Watch-It · Match à deux", body: matchBody(Object.assign({}, m, { by: from })), tag: "maiwatch-match", url: "./?view=match" }, null, "match", other(from));
 }
 function notifyTonight(before, after) {
