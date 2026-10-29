@@ -77,11 +77,11 @@
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
     tab: 'me', sug: {}, sugOff: {}, mi: {}, sugVer: 0, epOpen: false, epSeason: null, epData: {}, epExp: {}, epErr: {}, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
     impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false,
-    sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], who: 'all', lk: {}, colOpen: null, colq: '', noteEdit: null, noteDraft: null, drawWho: 'both', saMode: null, saMsg: '', saBusy: false, tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
+    sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], who: 'all', lk: {}, colOpen: null, colq: '', noteEdit: null, noteDraft: null, drawWho: 'both', matchTy: 'all', saMode: null, saMsg: '', saBusy: false, tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
   };
   var booted = false, isAuthenticated = false, currentUsername = '';
 
-  function defaultState() { return { settings: { region: 'BE', platforms: [], profiles: { M: 'Moi', E: 'Elle' }, ratingScale: 5 }, list: [], dismissed: { M: [], E: [] }, match: null, collections: [] }; }
+  function defaultState() { return { settings: { region: 'BE', platforms: [], profiles: { M: 'Moi', E: 'Elle' }, ratingScale: 5 }, list: [], dismissed: { M: [], E: [] }, match: null, tonight: null, collections: [] }; }
   function migrate(s) {
     s = s || defaultState();
     s.settings = s.settings || {};
@@ -91,6 +91,7 @@
     s.list = s.list || [];
     s.dismissed = Object.assign({ M: [], E: [] }, s.dismissed || {});
     s.match = s.match || null;
+    s.tonight = s.tonight || null;
     s.collections = s.collections || [];
     return s;
   }
@@ -596,6 +597,27 @@
   // ===================== Écrans =====================
   var V = {};
 
+  // « Proposer ce soir » : une proposition à la fois dans S.tonight = {pid, id, t, y, ty, p, by, at, st:'pending'|'ok'|'no'} ; masquée au bout de 2 jours.
+  function tonightLive() {
+    var t = S.tonight; if (!t || !t.pid) return null;
+    return (Date.parse(todayISO()) - Date.parse(t.at || todayISO())) / 86400000 <= 2 ? t : null;
+  }
+  function tonightBanner() {
+    var t = tonightLive(), o = me === 'M' ? 'E' : 'M', ac = function (a, v) { return 'data-act="' + a + '" data-v="' + v + '"'; };
+    if (!t) return '';
+    var head = '<button class="row" style="gap:12px;align-items:center" data-act="open" data-id="' + esc(t.id) + '">' + poster(t, 'sm') + '<span class="rb"><span class="title" style="font-size:16px">' + esc(t.t) + '</span><span class="meta" style="font-size:12px">' + meta(t) + '</span></span></button>';
+    if (t.st === 'ok') return '<div class="notice tonight" role="region" aria-label="Au programme ce soir"><b>★ Ce soir : vous êtes partants tous les deux</b>' + head + '<button class="link" style="min-height:44px" ' + ac('tonightclear', '') + '>Retirer</button></div>';
+    if (t.st === 'pending' && t.by !== me) return '<div class="notice tonight" role="region" aria-label="Proposition pour ce soir"><b>' + esc(pname(t.by)) + ' propose ce soir</b>' + head + '<div class="decide"><button class="chip on" ' + ac('tonightans', 'ok') + '>Partant(e)</button><button class="chip" ' + ac('tonightans', 'no') + '>Pas ce soir</button></div></div>';
+    if (t.st === 'pending') return '<div class="notice tonight"><b>Proposé à ' + esc(pname(o)) + '</b> · en attente' + head + '<button class="link" style="min-height:44px" ' + ac('tonightclear', '') + '>Annuler</button></div>';
+    if (t.st === 'no' && t.by === me) return '<div class="notice tonight"><b>' + esc(pname(o)) + ' n’est pas partant(e) ce soir</b>' + head + '<button class="link" style="min-height:44px" ' + ac('tonightclear', '') + '>OK</button></div>';
+    return '';
+  }
+  function matchInviteBanner() {
+    var m = S.match, o = me === 'M' ? 'E' : 'M';
+    if (!m || !m.by || m.by === me || matchDone(m, me)) return '';
+    return '<button class="notice newsb" data-act="gomatch"><span><b>' + esc(pname(o)) + ' vous invite à un Match à deux</b><br><span class="help">' + (m.ty === 'film' ? 'Films' : m.ty === 'serie' ? 'Séries' : 'Films et séries') + ' · ' + (m.deck.length - m.deck.filter(function (c) { return (m.votes[me] || {})[c.id]; }).length) + ' titres à balayer</span></span>' + I('chev') + '</button>';
+  }
+
   V.home = function () {
     var todo = S.list.filter(function (e) { return e.status === 'todo'; }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
     var nAv = todo.filter(function (e) { return avail(e).length; }).length;
@@ -603,7 +625,7 @@
     var sub = todo.length + ' titre' + (todo.length > 1 ? 's' : '') + (platsOn().length ? ' · ' + nAv + ' dispo sur vos plateformes' : '');
     var pend = pending(), o = me === 'M' ? 'E' : 'M';
     var newsBanner = pend.length ? '<button class="notice newsb" data-act="push" data-to="news"><span><b>' + esc(pname(o)) + ' a ajouté ' + pend.length + ' titre' + (pend.length > 1 ? 's' : '') + '</b><br><span class="help">Dites si vous voulez les voir aussi</span></span>' + I('chev') + '</button>' : '';
-    return header('À voir', sub) + installBanner() + newsBanner + (!CFG.tmdb ? noTmdb() : '') +
+    return header('À voir', sub) + installBanner() + tonightBanner() + matchInviteBanner() + newsBanner + (!CFG.tmdb ? noTmdb() : '') +
       (!platsOn().length && todo.length ? '<div class="notice"><b>Choisissez vos plateformes</b> dans les <button class="link" style="padding:0;min-height:0;color:var(--fg)" data-act="push" data-to="settings">réglages</button> pour voir ce qui est disponible chez vous.</div>' : '') +
       filterBar('<button class="fbtn rand" data-act="draw">' + I('dice') + 'Au hasard</button>') +
       (shown.length ? '<div class="list">' + shown.map(function (e) { return rowHtml(e, e); }).join('') + '</div>' :
@@ -705,6 +727,8 @@
     else if (e.status === 'todo') dock = '<button class="btn" data-act="askseen" data-id="' + esc(id) + '">Marquer comme vu</button>' + rm;
     else dock = '<button class="btn ghost" data-act="unseen" data-id="' + esc(id) + '">Remettre à voir</button>' + rm;
     var gen = (it.g || []).join(', ');
+    var tn = tonightLive(), prop = tn && tn.id === id && tn.st !== 'no' ? '<span class="st ok">' + (tn.st === 'ok' ? 'Prévu ce soir' : 'Proposé ce soir') + '</span>' : '<button class="btn ghost" style="height:44px" data-act="tonight" data-id="' + esc(id) + '">Proposer ce soir à ' + esc(pname(me === 'M' ? 'E' : 'M')) + '</button>';
+    where += prop;
     return hero + '<div class="group" style="gap:6px;margin-top:-6px"><h1>' + esc(it.t) + '</h1><span class="meta">' + meta(it) + (gen ? ' · ' + esc(gen) : '') + '</span></div>' +
       (d && d.ov ? '<p class="syn">' + esc(d.ov) + '</p>' : (d ? '' : '<div class="skel" style="height:72px"></div>')) +
       '<div class="group"><div class="sec"><h2>Où le voir</h2><span class="help">Source : TMDB / JustWatch</span></div>' + where + '</div>' + prog + epGuide(id, d, e) + rates + wg + colg + note + '<div class="dock">' + dock + '</div>';
@@ -869,17 +893,20 @@
   }
   function platFull(id) { return '<span class="badge">' + logoOf(id) + esc(pnameOf(id)) + '</span>'; }
 
+  function matchTypeSeg() {
+    return '<div class="seg" role="group" aria-label="Type de titres">' + [['all', 'Films et séries'], ['film', 'Films'], ['serie', 'Séries']].map(function (t) { return '<button class="chip' + (ui.matchTy === t[0] ? ' on' : '') + '" aria-pressed="' + (ui.matchTy === t[0]) + '" data-act="matchty" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+  }
   function matchView() {
     var m = S.match, ot = other(me), h = '';
     if (ui.matchBusy) return skeletons(2);
     if (!m) {
       return '<div class="notice"><b>Match à deux.</b> Chacun de son côté (sur son téléphone), vous balayez une même sélection de titres : « Envie » ou « Pas envie ». Les titres que vous voulez tous les deux apparaissent ici.</div>' +
-        '<button class="btn" data-act="matchstart">Lancer une partie</button><span class="help">La sélection mélange votre liste « À voir » et des suggestions pour vous deux, sur vos plateformes.</span>';
+        matchTypeSeg() + '<button class="btn" data-act="matchstart">Lancer et inviter ' + esc(pname(ot)) + '</button><span class="help">La sélection mélange votre liste « À voir » et des suggestions pour vous deux, sur vos plateformes.</span>';
     }
-    var cur = matchCur(m), res = matchResults(m), voted = m.deck.filter(function (c) { return matchMine(m)[c.id]; }).length;
+    var cur = matchCur(m), res = matchResults(m), tyl = m.ty === 'film' ? 'Films' : m.ty === 'serie' ? 'Séries' : 'Films et séries', voted = m.deck.filter(function (c) { return matchMine(m)[c.id]; }).length;
     if (cur) {
       var av = (cur.f || []).filter(function (p) { return platsOn().indexOf(p) >= 0; }), info = matchInfo(cur);
-      h += '<span class="help" style="text-align:center">Titre ' + (voted + 1) + ' sur ' + m.deck.length + ' · vous votez en tant que ' + esc(pname(me)) + '</span>' +
+      h += '<span class="help" style="text-align:center">' + tyl + ' · titre ' + (voted + 1) + ' sur ' + m.deck.length + ' · vous votez en tant que ' + esc(pname(me)) + '</span>' +
         '<div class="mcard"><div class="mp" style="background:linear-gradient(160deg,hsl(' + hueOf(cur.t) + ' 38% 36%),hsl(' + hueOf(cur.t) + ' 24% 13%))">' + (cur.p ? '<img src="' + IMG + 'w342' + esc(cur.p) + '" alt="" onerror="this.remove()">' : '') + '<span>' + esc(cur.t.charAt(0)) + '</span></div>' +
         '<h2 style="font-family:var(--display);font-size:24px;font-weight:800;letter-spacing:-.01em;line-height:1.15;text-transform:none;color:var(--fg)">' + esc(cur.t) + '</h2><span class="meta">' + meta(cur) + (cur.g && cur.g.length ? ' · ' + esc(cur.g.slice(0, 2).join(', ')) : '') + '</span>' +
         '<div class="badges" style="justify-content:center">' + (av.length ? av.map(platFull).join('') : '<span class="badge mut">Pas sur vos plateformes</span>') + '</div>' +
@@ -894,7 +921,8 @@
       return '<div class="sug" style="align-items:center"><button class="row" style="gap:12px;align-items:center" data-act="open" data-id="' + esc(c.id) + '">' + poster(c, 'sm') + '<span class="rb"><span class="title" style="font-size:16px">' + esc(c.t) + '</span><span class="meta" style="font-size:12px">' + meta(c) + '</span></span></button>' +
         (inL ? '<span class="st ok">Dans la liste</span>' : '<button class="round" data-act="matchadd" data-id="' + esc(c.id) + '" aria-label="Ajouter ' + esc(c.t) + ' à la liste">' + I('plus') + '</button>') + '</div>';
     }).join('') : '<div class="empty">Pas encore de titre voulu par vous deux.</div>') + '</div>' +
-      '<button class="btn ghost" style="height:44px" data-act="matchstart">Nouvelle partie</button>';
+      (!matchDone(m, ot) ? '<button class="btn ghost" style="height:44px" data-act="matchinvite">Inviter ' + esc(pname(ot)) + ' (notification)</button>' : '') +
+      '<div class="group"><h2>Nouvelle partie</h2>' + matchTypeSeg() + '<button class="btn ghost" style="height:44px" data-act="matchstart">Lancer et inviter ' + esc(pname(ot)) + '</button></div>';
     return h;
   }
 
@@ -932,7 +960,7 @@
     var kinds = '';
     if (P.st === 'on' && P.prefs) {
       var o = me === 'M' ? 'E' : 'M';
-      kinds = '<div class="group"><h2>Me prévenir quand</h2>' + [['added', pname(o) + ' ajoute un titre', 'Regroupé si elle en ajoute plusieurs d’un coup.'], ['release', 'Un titre de ma liste sort', 'Pour les titres ajoutés avant leur sortie, le jour J.'], ['gone', 'Un titre quitte mes plateformes', 'Vérifié toutes les 6 h.']].map(function (k) {
+      kinds = '<div class="group"><h2>Me prévenir quand</h2>' + [['added', pname(o) + ' ajoute un titre', 'Regroupé si elle en ajoute plusieurs d’un coup.'], ['release', 'Un titre de ma liste sort', 'Pour les titres ajoutés avant leur sortie, le jour J.'], ['gone', 'Un titre quitte mes plateformes', 'Vérifié toutes les 6 h.'], ['match', pname(o) + ' lance un Match à deux', 'Invitation à jouer.'], ['tonight', pname(o) + ' propose un titre ce soir', 'Et sa réponse à votre proposition.']].map(function (k) {
         var on = P.prefs[k[0]] !== false;
         return '<button class="card" style="text-align:left;width:100%" data-act="pushpref" data-k="' + k[0] + '" aria-pressed="' + on + '"><span class="ct"><b>' + esc(k[1]) + '</b><span>' + esc(k[2]) + '</span></span><span class="st ' + (on ? 'ok' : 'no') + '">' + (on ? 'Oui' : 'Non') + '</span></button>';
       }).join('') + (P.prefs.release !== false ? '<div class="card"><span class="ct"><label for="pushhour"><b>Heure de la notification de sortie</b></label><span>Envoyée ce jour-là à l’heure choisie (heure de Bruxelles).</span></span><select id="pushhour" class="fld" style="width:auto" aria-label="Heure">' + Array.apply(null, Array(24)).map(function (_, h) { return '<option value="' + h + '"' + (h === P.prefs.hour ? ' selected' : '') + '>' + h + ' h</option>'; }).join('') + '</select></div>' : '') + '<span class="help">Cet appareil est réglé sur le profil « ' + esc(pname(me)) + ' ». Pour changer, réactivez les notifications après avoir choisi le profil.</span></div>';
@@ -1525,19 +1553,34 @@
         return o;
       };
       Promise.all([api('/api/suggestions?tab=both&me=' + me).catch(function () { return []; }), api('/api/suggestions?tab=me&me=' + me).catch(function () { return []; })]).then(function (r) {
-        var pool = {};
-        S.list.forEach(function (e) { if (e.status === 'todo' && (!availKnown(e) || !plats.length || avail(e).length)) pool[e.id] = card(e, AV[e.id] && AV[e.id].f); });
-        r[0].concat(r[1]).forEach(function (x) { know(x.item); if (!pool[x.item.id]) pool[x.item.id] = card(x.item, x.item.av.f); });
+        var pool = {}, ty = ui.matchTy, tyOk = function (it) { return ty === 'all' || it.ty === ty; };
+        S.list.forEach(function (e) { if (e.status === 'todo' && tyOk(e) && (!availKnown(e) || !plats.length || avail(e).length)) pool[e.id] = card(e, AV[e.id] && AV[e.id].f); });
+        r[0].concat(r[1]).forEach(function (x) { know(x.item); if (tyOk(x.item) && !pool[x.item.id]) pool[x.item.id] = card(x.item, x.item.av.f); });
         var ids = Object.keys(pool);
-        if (ids.length < 2) { toast('Ajoutez d’abord quelques titres ou notez des films vus.'); return; }
+        if (ids.length < 2) { toast(ty === 'all' ? 'Ajoutez d’abord quelques titres ou notez des films vus.' : 'Pas assez de ' + (ty === 'film' ? 'films' : 'séries') + ' à proposer : ajoutez-en ou choisissez « Films et séries ».'); return; }
         for (var i = ids.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = ids[i]; ids[i] = ids[j]; ids[j] = t; }
         var deck = ids.slice(0, 12).map(function (k) { return pool[k]; });
         return Promise.all(deck.map(function (c) {
           if (typeof c.ov === 'string') return null;
           return api('/api/title/' + encodeURIComponent(c.id)).then(function (d) { c.ov = (d.ov || '').slice(0, 280); if (d.trailer) c.tr = d.trailer; }).catch(function () { c.ov = ''; });
-        })).then(function () { S.match = { id: Date.now().toString(36), deck: deck, votes: { M: {}, E: {} }, at: todayISO() }; save(); });
+        })).then(function () { S.match = { id: Date.now().toString(36), deck: deck, votes: { M: {}, E: {} }, at: todayISO(), ty: ty, by: me }; save(); toast(pname(me === 'M' ? 'E' : 'M') + ' est invité(e) à jouer.'); });
       }).finally(function () { ui.matchBusy = false; render(true); });
     },
+    matchty: function (d) { ui.matchTy = d.v; render(true); },
+    gomatch: function () { ui.hist = []; ui.screen = 'envies'; ui.cs = 'match'; ui.sheet = null; render(); },
+    matchinvite: function () {
+      api('/api/match/invite', { method: 'POST', body: { from: me } }).then(function (r) { toast(r.sent ? 'Invitation envoyée.' : 'Aucune notification envoyée : ' + pname(me === 'M' ? 'E' : 'M') + ' doit les activer.'); }).catch(function (e) { toast(e.message); });
+    },
+    tonight: function (d) {
+      var it = entry(d.id) || KNOWN[d.id] || (ui.dd && ui.dd.id === d.id ? ui.dd : null); if (!it) return;
+      S.tonight = { pid: Date.now().toString(36), id: it.id, ty: it.ty, t: it.t, y: it.y || null, p: it.p || null, by: me, at: todayISO(), st: 'pending' };
+      save(); render(true); toast('Proposition envoyée à ' + pname(me === 'M' ? 'E' : 'M') + '.');
+    },
+    tonightans: function (d) {
+      var t = tonightLive(); if (!t || t.st !== 'pending') return;
+      t.st = d.v === 'ok' ? 'ok' : 'no'; save(); render(true);
+    },
+    tonightclear: function () { S.tonight = null; save(); render(true); },
     matchvote: function (d) {
       var m = S.match; if (!m) return;
       m.votes[me] = m.votes[me] || {}; m.votes[me][d.id] = +d.v; save(); render(true);
@@ -1555,7 +1598,7 @@
         return Promise.all([navigator.serviceWorker.ready, api('/api/push/key')]).then(function (r) {
           return r[0].pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(r[1].publicKey) });
         }).then(function (sub) {
-          return api('/api/push/subscribe', { method: 'POST', body: { sub: sub.toJSON(), profile: me } }).then(function () { ui.push = { st: 'on', endpoint: sub.endpoint, msg: 'Notifications activées sur cet appareil.', prefs: { added: true, release: true, gone: true } }; });
+          return api('/api/push/subscribe', { method: 'POST', body: { sub: sub.toJSON(), profile: me } }).then(function () { ui.push = { st: 'on', endpoint: sub.endpoint, msg: 'Notifications activées sur cet appareil.', prefs: { added: true, release: true, gone: true, match: true, tonight: true } }; });
         });
       }).catch(function (e) { ui.push.msg = 'Impossible d’activer : ' + e.message; }).finally(function () { render(true); });
     },
@@ -1777,6 +1820,8 @@
     if (!S || !isAuthenticated || !(action || title || text || url || view)) return;
     history.replaceState(null, '', location.pathname + location.hash);
     if (view === 'news') { ui.hist = []; ui.screen = 'news'; render(); return; }
+    if (view === 'match') { ui.hist = []; ui.screen = 'envies'; ui.cs = 'match'; render(); return; }
+    if (view === 'tonight') { ui.hist = []; ui.screen = 'home'; render(); return; }
     if (action === 'ce-soir') { ui.hist = []; ui.screen = 'envies'; render(); return; }
     var q = '';
     if (action !== 'ajouter') {

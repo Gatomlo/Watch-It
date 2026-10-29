@@ -189,7 +189,7 @@ app.put("/api/state", requireAuth, (req, res) => {
     return res.status(409).json({ error: "conflict", state: db.getState() });
   }
   res.set("X-State-Version", String(version));
-  try { push.notifyAdded(before, state); } catch (e) { /* une notification ne doit jamais faire échouer la synchro */ }
+  try { push.notifyAdded(before, state); push.notifyMatch(before, state); push.notifyTonight(before, state); } catch (e) { /* une notification ne doit jamais faire échouer la synchro */ }
   res.json({ ok: true, version });
 });
 
@@ -329,6 +329,13 @@ app.post("/api/push/status", requireAuth, (req, res) => {
 app.post("/api/react", requireAuth, wrap(async (req, res) => {
   const b = req.body || {};
   res.json(push.react(String(b.id || ""), b.u, b.want !== false));
+}));
+app.post("/api/match/invite", requireAuth, wrap(async (req, res) => {
+  res.json({ sent: await push.inviteMatch(req.body && req.body.from) });
+}));
+app.post("/api/tonight/answer", requireAuth, wrap(async (req, res) => {
+  const b = req.body || {};
+  res.json(push.answerTonight(String(b.pid || ""), b.u, b.ok !== false));
 }));
 app.post("/api/push/prefs", requireAuth, (req, res) => {
   const ep = req.body && req.body.endpoint;

@@ -66,7 +66,7 @@ self.addEventListener('push', function (e) {
   try { data = e.data ? e.data.json() : {}; } catch (err) {}
   e.waitUntil(self.registration.showNotification(data.title || 'Watch-It', {
     body: data.body || '', icon: 'icon-192.png', badge: 'badge-96.png', tag: data.tag || 'maiwatch', actions: data.actions || [],
-    data: { url: data.url || './', id: data.id || null, u: data.u || null }
+    data: { url: data.url || './', id: data.id || null, u: data.u || null, pid: data.pid || null }
   }));
 });
 
@@ -83,6 +83,14 @@ self.addEventListener('notificationclick', function (e) {
           .then(function () { return self.registration.getNotifications({ tag: e.notification.tag }); })
           .then(function (l) { l.forEach(function (n) { n.close(); }); });
       })
+      .catch(function () { return self.clients.openWindow(new URL(d.url || './', self.registration.scope).href); }));
+    return;
+  }
+  // « Partant » / « Pas ce soir » pour une proposition de ce soir.
+  if ((e.action === 'tok' || e.action === 'tno') && d.pid && d.u) {
+    e.waitUntil(fetch('api/tonight/answer', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid: d.pid, u: d.u, ok: e.action === 'tok' }) })
+      .then(function (r) { if (!r.ok) throw new Error('tonight'); return r.json(); })
+      .then(function (r) { return self.registration.showNotification('Watch-It', { body: e.action === 'tok' ? '« ' + r.title + ' » : c’est noté pour ce soir.' : '« ' + r.title + ' » : pas ce soir.', icon: 'icon-192.png', tag: e.notification.tag, silent: true }); })
       .catch(function () { return self.clients.openWindow(new URL(d.url || './', self.registration.scope).href); }));
     return;
   }

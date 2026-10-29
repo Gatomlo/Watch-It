@@ -12,7 +12,7 @@ const tmdb = require("./tmdb");
 store.db.exec("CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, data TEXT NOT NULL, profile TEXT NOT NULL DEFAULT 'M', created_at TEXT NOT NULL DEFAULT (datetime('now')))");
 
 try { store.db.exec("ALTER TABLE push_subs ADD COLUMN prefs TEXT NOT NULL DEFAULT '{}'"); } catch (e) { /* colonne déjà présente */ }
-const KINDS = ["added", "release", "gone"]; // préférences par appareil, toutes actives par défaut
+const KINDS = ["added", "release", "gone", "match", "tonight"]; // préférences par appareil, toutes actives par défaut
 
 function vapid() {
   let pub = store.getSecret("vapid_pub"), priv = (store.getSecret("vapid_priv") && decrypt(store.getSecret("vapid_priv"))) || null;
@@ -156,6 +156,44 @@ function react(id, u, want) {
   const err = new Error("Réessayez."); err.status = 409; throw err;
 }
 
+// --- Match à deux et « Proposer ce soir » : l'autre profil est prévenu quand l'état change ---
+const nameOf = (u) => ((store.getState().settings || {}).profiles || {})[u] || (u === "M" ? "Moi" : "Elle");
+const TYPES = { film: "de films", serie: "de séries" };
+function matchBody(m) { return nameOf(m.by) + " vous invite à un Match à deux" + (TYPES[m.ty] ? " " + TYPES[m.ty] : "") + ". Chacun balaye la même sélection !"; }
+function notifyMatch(before, after) {
+  const m = after.match;
+  if (!m || (m.by !== "M" && m.by !== "E") || (before && before.match && before.match.id === m.id)) return;
+  send({ title: "Watch-It · Match à deux", body: matchBody(m), tag: "maiwatch-match", url: "./?view=match" }, null, "match", other(m.by)).catch(() => {});
+}
+// Relance manuelle (bouton « Inviter » de la partie en cours).
+async function inviteMatch(from) {
+  const m = store.getState().match;
+  if ((from !== "M" && from !== "E") || !m) { const e = new Error("Aucune partie en cours."); e.status = 404; throw e; }
+  return send({ title: "Watch-It · Match à deux", body: matchBody(Object.assign({}, m, { by: from })), tag: "maiwatch-match", url: "./?view=match" }, null, "match", other(from));
+}
+function notifyTonight(before, after) {
+  const t = after.tonight;
+  if (!t || t.st !== "pending" || (t.by !== "M" && t.by !== "E") || (before && before.tonight && before.tonight.pid === t.pid)) return;
+  send({ title: "Watch-It · Ce soir ?", body: nameOf(t.by) + " propose « " + t.t + " » ce soir.", tag: "maiwatch-tonight", url: "./?view=tonight", u: other(t.by), pid: t.pid,
+    actions: [{ action: "tok", title: "Partant" }, { action: "tno", title: "Pas ce soir" }] }, null, "tonight", other(t.by)).catch(() => {});
+}
+// Réponse (depuis la notification ou l'appli) : met à jour l'état puis prévient celui qui proposait.
+function answerTonight(pid, u, ok) {
+  if ((u !== "M" && u !== "E") || typeof pid !== "string") { const e = new Error("Requête invalide."); e.status = 400; throw e; }
+  for (let i = 0; i < 4; i++) {
+    const state = store.getState(), version = store.getStateVersion();
+    const t = state.tonight;
+    if (!t || t.pid !== pid || t.by === u) { const err = new Error("Proposition introuvable."); err.status = 404; throw err; }
+    if (t.st !== "pending") return { ok: true, title: t.t, st: t.st };
+    t.st = ok ? "ok" : "no";
+    if (store.saveState(state, version) != null) {
+      send({ title: "Watch-It · Ce soir ?", body: nameOf(u) + (ok ? " est partant(e) pour « " : " n'est pas partant(e) pour « ") + t.t + " ».", tag: "maiwatch-tonight-ans", url: "./?view=tonight" }, null, "tonight", t.by).catch(() => {});
+      return { ok: true, title: t.t, st: t.st };
+    }
+  }
+  const err = new Error("Réessayez."); err.status = 409; throw err;
+}
+
 // --- Date de sortie atteinte (titres ajoutés avant leur sortie : e.d) ---
 const TZ = process.env.NOTIF_TZ || "Europe/Brussels";
 function localNow() {
@@ -207,4 +245,4 @@ function start() {
   timer.unref();
 }
 
-module.exports = { publicKey, subscribe, unsubscribe, count, isSubscribed, prefsOf, setPrefs, send, setSender, watch, start, notifyAdded, flushAdded, releaseCheck, react };
+module.exports = { publicKey, subscribe, unsubscribe, count, isSubscribed, prefsOf, setPrefs, send, setSender, watch, start, notifyAdded, flushAdded, releaseCheck, react, notifyMatch, inviteMatch, notifyTonight, answerTonight };
