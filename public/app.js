@@ -77,7 +77,7 @@
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
     tab: 'me', sug: {}, sugOff: {}, mi: {}, sugVer: 0, epOpen: false, epSeason: null, epData: {}, epExp: {}, epErr: {}, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
     impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false,
-    sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], who: 'all', lk: {}, colOpen: null, colq: '', noteEdit: null, noteDraft: null, drawWho: 'both', matchTy: 'all', saMode: null, saMsg: '', saBusy: false, tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
+    sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], who: 'all', lk: {}, colOpen: null, colq: '', noteEdit: null, noteDraft: null, drawWho: 'both', matchTy: 'all', matchSrc: 'mix', saMode: null, saMsg: '', saBusy: false, tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
   };
   var booted = false, isAuthenticated = false, currentUsername = '';
 
@@ -893,6 +893,9 @@
   }
   function platFull(id) { return '<span class="badge">' + logoOf(id) + esc(pnameOf(id)) + '</span>'; }
 
+  function matchSrcSeg() {
+    return '<div class="seg" role="group" aria-label="Origine des titres">' + [['mix', 'Mixte'], ['list', 'Ma liste'], ['out', 'Hors liste']].map(function (t) { return '<button class="chip' + (ui.matchSrc === t[0] ? ' on' : '') + '" aria-pressed="' + (ui.matchSrc === t[0]) + '" data-act="matchsrc" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+  }
   function matchTypeSeg() {
     return '<div class="seg" role="group" aria-label="Type de titres">' + [['all', 'Films et séries'], ['film', 'Films'], ['serie', 'Séries']].map(function (t) { return '<button class="chip' + (ui.matchTy === t[0] ? ' on' : '') + '" aria-pressed="' + (ui.matchTy === t[0]) + '" data-act="matchty" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
   }
@@ -902,7 +905,7 @@
     if (ui.matchBusy) return skeletons(2);
     if (!m) {
       return '<div class="notice"><b>Match à deux.</b> Chacun de son côté (sur son téléphone), vous balayez une même sélection de titres : « Envie » ou « Pas envie ». Les titres que vous voulez tous les deux apparaissent ici.</div>' +
-        matchTypeSeg() + '<button class="btn" data-act="matchstart">Lancer et inviter ' + esc(pname(ot)) + '</button><span class="help">La sélection mélange votre liste « À voir » et des suggestions pour vous deux, sur vos plateformes.</span>';
+        matchTypeSeg() + matchSrcSeg() + '<span class="help">« Ma liste » : vos titres « À voir » disponibles chez vous. « Hors liste » : des suggestions. « Mixte » : moitié-moitié.</span><button class="btn" data-act="matchstart">Lancer et inviter ' + esc(pname(ot)) + '</button><span class="help">La sélection mélange votre liste « À voir » et des suggestions pour vous deux, sur vos plateformes.</span>';
     }
     var tyw = m.ty === 'film' ? 'de films' : m.ty === 'serie' ? 'de séries' : 'de films et séries';
     if (m.st === 'wait') {
@@ -912,7 +915,7 @@
         '<div class="decide"><button class="chip on" data-act="matchaccept">Accepter</button><button class="chip" data-act="matchdecline">Refuser</button></div>';
     }
     if (m.st === 'no' && m.by === me) return '<div class="notice"><b>' + esc(pname(ot)) + ' ne veut pas jouer pour l’instant.</b></div><button class="btn ghost" style="height:44px" data-act="matchcancel">OK</button>';
-    var cur = matchCur(m), res = matchResults(m), tyl = m.ty === 'film' ? 'Films' : m.ty === 'serie' ? 'Séries' : 'Films et séries', voted = m.deck.filter(function (c) { return matchMine(m)[c.id]; }).length;
+    var cur = matchCur(m), res = matchResults(m), tyl = (m.ty === 'film' ? 'Films' : m.ty === 'serie' ? 'Séries' : 'Films et séries') + (m.src === 'list' ? ' de la liste' : m.src === 'out' ? ' hors liste' : ''), voted = m.deck.filter(function (c) { return matchMine(m)[c.id]; }).length;
     if (cur) {
       var av = (cur.f || []).filter(function (p) { return platsOn().indexOf(p) >= 0; }), info = matchInfo(cur);
       h += '<span class="help" style="text-align:center">' + tyl + ' · titre ' + (voted + 1) + ' sur ' + m.deck.length + ' · vous votez en tant que ' + esc(pname(me)) + '</span>' +
@@ -931,7 +934,7 @@
       return '<div class="sug" style="align-items:center"><button class="row" style="gap:12px;align-items:center" data-act="open" data-id="' + esc(c.id) + '">' + poster(c, 'sm') + '<span class="rb"><span class="title" style="font-size:16px">' + esc(c.t) + '</span><span class="meta" style="font-size:12px">' + meta(c) + '</span></span></button>' +
         (inL ? '<span class="st ok">Dans la liste</span>' : '<button class="round" data-act="matchadd" data-id="' + esc(c.id) + '" aria-label="Ajouter ' + esc(c.t) + ' à la liste">' + I('plus') + '</button>') + '</div>';
     }).join('') : '<div class="empty">Pas encore de titre voulu par vous deux.</div>') + '</div>' +
-      '<div class="group"><h2>Nouvelle partie</h2>' + matchTypeSeg() + '<button class="btn ghost" style="height:44px" data-act="matchstart">Lancer et inviter ' + esc(pname(ot)) + '</button></div>';
+      '<div class="group"><h2>Nouvelle partie</h2>' + matchTypeSeg() + matchSrcSeg() + '<button class="btn ghost" style="height:44px" data-act="matchstart">Lancer et inviter ' + esc(pname(ot)) + '</button></div>';
     return h;
   }
 
@@ -1562,22 +1565,28 @@
         return o;
       };
       Promise.all([api('/api/suggestions?tab=both&me=' + me).catch(function () { return []; }), api('/api/suggestions?tab=me&me=' + me).catch(function () { return []; })]).then(function (r) {
-        var pool = {}, ty = ui.matchTy, tyOk = function (it) { return ty === 'all' || it.ty === ty; };
-        S.list.forEach(function (e) { if (e.status === 'todo' && tyOk(e) && (!availKnown(e) || !plats.length || avail(e).length)) pool[e.id] = card(e, AV[e.id] && AV[e.id].f); });
-        r[0].concat(r[1]).forEach(function (x) { know(x.item); if (tyOk(x.item) && !pool[x.item.id]) pool[x.item.id] = card(x.item, x.item.av.f); });
-        var ids = Object.keys(pool);
-        if (ids.length < 2) { toast(ty === 'all' ? 'Ajoutez d’abord quelques titres ou notez des films vus.' : 'Pas assez de ' + (ty === 'film' ? 'films' : 'séries') + ' à proposer : ajoutez-en ou choisissez « Films et séries ».'); return; }
-        for (var i = ids.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = ids[i]; ids[i] = ids[j]; ids[j] = t; }
-        var deck = ids.slice(0, 12).map(function (k) { return pool[k]; });
+        var pool = {}, inL = [], inS = [], ty = ui.matchTy, src = ui.matchSrc, tyOk = function (it) { return ty === 'all' || it.ty === ty; };
+        var shuffle = function (a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; } return a; };
+        if (src !== 'out') S.list.forEach(function (e) { if (e.status === 'todo' && tyOk(e) && (!availKnown(e) || !plats.length || avail(e).length)) { pool[e.id] = card(e, AV[e.id] && AV[e.id].f); inL.push(e.id); } });
+        if (src !== 'list') r[0].concat(r[1]).forEach(function (x) { know(x.item); if (tyOk(x.item) && !pool[x.item.id] && !entry(x.item.id)) { pool[x.item.id] = card(x.item, x.item.av.f); inS.push(x.item.id); } });
+        var ids;
+        if (src === 'mix') { // moitié liste, moitié hors liste (l'un complète l'autre s'il en manque)
+          shuffle(inL); shuffle(inS);
+          var nl = Math.min(inL.length, Math.max(6, 12 - inS.length));
+          ids = inL.slice(0, nl).concat(inS.slice(0, 12 - nl));
+        } else ids = shuffle(inL.concat(inS));
+        if (ids.length < 2) { toast(src === 'list' ? 'Pas assez de titres dans votre liste « À voir » (et dispo sur vos plateformes) : ajoutez-en ou choisissez « Mixte ».' : ty === 'all' ? 'Ajoutez d’abord quelques titres ou notez des films vus.' : 'Pas assez de ' + (ty === 'film' ? 'films' : 'séries') + ' à proposer : ajoutez-en ou choisissez « Films et séries ».'); return; }
+        var deck = shuffle(ids.slice(0, 12)).map(function (k) { return pool[k]; });
         return Promise.all(deck.map(function (c) {
           if (typeof c.ov === 'string') return null;
           return api('/api/title/' + encodeURIComponent(c.id)).then(function (d) { c.ov = (d.ov || '').slice(0, 280); if (d.trailer) c.tr = d.trailer; }).catch(function () { c.ov = ''; });
-        })).then(function () { S.match = { id: Date.now().toString(36), deck: deck, votes: { M: {}, E: {} }, at: todayISO(), ty: ty, by: me, st: 'wait' }; save(); toast('Invitation envoyée : la partie commence quand ' + pname(me === 'M' ? 'E' : 'M') + ' accepte.'); });
+        })).then(function () { S.match = { id: Date.now().toString(36), deck: deck, votes: { M: {}, E: {} }, at: todayISO(), ty: ty, src: src, by: me, st: 'wait' }; save(); toast('Invitation envoyée : la partie commence quand ' + pname(me === 'M' ? 'E' : 'M') + ' accepte.'); });
       }).finally(function () { ui.matchBusy = false; render(true); });
     },
     matchaccept: function () { if (S.match && S.match.st === 'wait') { S.match.st = 'on'; save(); render(true); } },
     matchdecline: function () { if (S.match && S.match.st === 'wait') { S.match.st = 'no'; save(); render(true); } },
     matchcancel: function () { S.match = null; save(); render(true); },
+    matchsrc: function (d) { ui.matchSrc = d.v; render(true); },
     matchty: function (d) { ui.matchTy = d.v; render(true); },
     gomatch: function () { ui.hist = []; ui.screen = 'envies'; ui.cs = 'match'; ui.sheet = null; render(); },
     matchinvite: function () {
