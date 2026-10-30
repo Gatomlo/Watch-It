@@ -610,10 +610,10 @@
   // ===================== Écrans =====================
   var V = {};
 
-  // « Proposer ce soir » : une proposition à la fois dans S.tonight = {pid, id, t, y, ty, p, by, at, st:'pending'|'ok'|'no'} ; masquée au bout de 2 jours.
+  // « Proposer ce soir » : une proposition à la fois dans S.tonight = {pid, id, t, y, ty, p, by, at, st:'pending'|'ok'|'no'} ; masquée dès le lendemain.
   function tonightLive() {
     var t = S.tonight; if (!t || !t.pid) return null;
-    return (Date.parse(todayISO()) - Date.parse(t.at || todayISO())) / 86400000 <= 2 ? t : null;
+    return t.at === todayISO() ? t : null;
   }
   function tonightBanner() {
     var t = tonightLive(), o = me === 'M' ? 'E' : 'M', ac = function (a, v) { return 'data-act="' + a + '" data-v="' + v + '"'; };
