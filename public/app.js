@@ -409,8 +409,8 @@
   function other() { return me === 'M' ? 'E' : 'M'; }
   function whoOk(e, w) {
     w = w || ui.who;
-    if (w === 'me') return wants(e, me);
-    if (w === 'other') return wants(e, other());
+    if (w === 'me') return wants(e, me) && !wants(e, other());
+    if (w === 'other') return wants(e, other()) && !wants(e, me);
     if (w === 'both') return wants(e, 'M') && wants(e, 'E');
     return true;
   }
