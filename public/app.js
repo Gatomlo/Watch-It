@@ -957,6 +957,7 @@
         '<h2 style="font-family:var(--display);font-size:24px;font-weight:800;letter-spacing:-.01em;line-height:1.15;text-transform:none;color:var(--fg)">' + esc(cur.t) + '</h2><span class="meta">' + meta(cur) + (cur.g && cur.g.length ? ' · ' + esc(cur.g.slice(0, 2).join(', ')) : '') + '</span>' +
         '<div class="badges" style="justify-content:center">' + (av.length ? av.map(platFull).join('') : '<span class="badge mut">Pas sur vos plateformes</span>') + '</div>' +
         '<div class="mact"><button class="btn ghost" data-act="matchvote" data-id="' + esc(cur.id) + '" data-v="-1">Pas envie</button><button class="btn" data-act="matchvote" data-id="' + esc(cur.id) + '" data-v="1">Envie</button></div>' +
+        '<button class="chip" style="height:44px;padding:0 16px" data-act="matchvote" data-id="' + esc(cur.id) + '" data-v="2">Pas ce soir (à garder dans la liste)</button>' +
         '<button class="chip" style="height:44px;padding:0 16px" data-act="matchseen" data-id="' + esc(cur.id) + '">Déjà vu</button>' +
         (info.tr ? '<button class="chip" style="height:44px;padding:0 16px" data-act="trailer" data-k="' + esc(info.tr) + '">' + I('play').replace('class="ico "', 'class="ico" style="width:14px;height:14px;fill:currentColor;stroke:none"') + 'Bande-annonce</button>' : '') +
         (info.ov ? '<p class="syn" style="text-align:left;margin:0">' + esc(info.ov) + '</p>' : '') + '</div>';
@@ -1661,6 +1662,12 @@
       var m = S.match; if (!m || m.st === 'wait' || m.st === 'no') return;
       m.votes[me] = m.votes[me] || {}; m.votes[me][d.id] = +d.v; save(); render(true);
       var c = m.deck.filter(function (x) { return x.id === d.id; })[0];
+      if (+d.v === 2 && c) { // « Pas ce soir » : gardé dans la liste, mais pas un match pour cette soirée
+        var e = entry(c.id) || addEntry(c, 'todo');
+        if (e.status === 'todo') { var w = Object.assign({}, e.w || {}); if (!e.w && e.by) w[e.by] = true; w[me] = true; e.w = w; save(); render(true); }
+        toast('« ' + c.t + ' » ajouté à votre liste, pas pour ce soir.');
+        return;
+      }
       if (+d.v === 1 && ((m.votes[other(me)] || {})[d.id] === 1) && c) {
         if (matchApply()) { save(); refreshAvail(); render(true); }
         toast('C’est un match : « ' + c.t + ' » ajouté à votre liste !');
