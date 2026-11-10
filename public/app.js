@@ -93,6 +93,7 @@
     s.match = s.match || null;
     s.tonight = s.tonight || null;
     s.collections = s.collections || [];
+    s.matchHist = s.matchHist || [];
     return s;
   }
   function pname(u) { return (S && S.settings.profiles[u]) || (u === 'M' ? 'Moi' : 'Elle'); }
@@ -895,6 +896,13 @@
 
   function matchMine(m) { return (m.votes && m.votes[me]) || {}; }
   function matchCur(m) { var v = matchMine(m); for (var i = 0; i < m.deck.length; i++) if (!v[m.deck[i].id]) return m.deck[i]; return null; }
+  // Garde les matchs des 3 dernières parties (jouées) quand la partie en cours est remplacée ou annulée.
+  function archiveMatch() {
+    var m = S.match; if (!m || m.st === 'wait' || m.st === 'no') return;
+    var h = S.matchHist = (S.matchHist || []).filter(function (x) { return x.id !== m.id; });
+    h.unshift({ id: m.id, at: m.at || todayISO(), ty: m.ty || 'all', src: m.src || 'mix', res: matchResults(m).map(lite) });
+    S.matchHist = h.slice(0, 3);
+  }
   function matchResults(m) { var a = (m.votes && m.votes.M) || {}, b = (m.votes && m.votes.E) || {}; return m.deck.filter(function (c) { return a[c.id] === 1 && b[c.id] === 1; }); }
   function matchDone(m, u) { var v = (m.votes && m.votes[u]) || {}; return m.deck.every(function (c) { return v[c.id]; }); }
   // Résumé et bande-annonce d'une carte : gardés dans le paquet ; pour une ancienne partie, récupérés à l'affichage.
@@ -912,13 +920,26 @@
   function matchTypeSeg() {
     return '<div class="seg" role="group" aria-label="Type de titres">' + [['all', 'Films et séries'], ['film', 'Films'], ['serie', 'Séries']].map(function (t) { return '<button class="chip' + (ui.matchTy === t[0] ? ' on' : '') + '" aria-pressed="' + (ui.matchTy === t[0]) + '" data-act="matchty" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
   }
+  function matchHistView() {
+    var hs = S.matchHist || []; if (!hs.length) return '';
+    var fr = function (d) { var p = String(d || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] : ''; };
+    return '<div class="group"><div class="sec"><h2>Parties précédentes</h2></div>' + hs.map(function (g) {
+      var tyl = g.ty === 'film' ? 'Films' : g.ty === 'serie' ? 'Séries' : 'Films et séries';
+      return '<span class="help" style="display:block;margin-top:8px">' + esc(tyl) + (fr(g.at) ? ' · ' + fr(g.at) : '') + ' · ' + g.res.length + ' match' + (g.res.length > 1 ? 's' : '') + '</span>' +
+        (g.res.length ? g.res.map(function (c) {
+          var inL = entry(c.id);
+          return '<div class="sug" style="align-items:center"><button class="row" style="gap:12px;align-items:center" data-act="open" data-id="' + esc(c.id) + '">' + poster(c, 'sm') + '<span class="rb"><span class="title" style="font-size:16px">' + esc(c.t) + '</span><span class="meta" style="font-size:12px">' + meta(c) + '</span></span></button>' +
+            (inL ? '<span class="st ok">' + (inL.status === 'seen' ? 'Vu' : 'Dans la liste') + '</span>' : '') + '</div>';
+        }).join('') : '<div class="empty">Aucun match.</div>');
+    }).join('') + '</div>';
+  }
   function matchView() {
     var m = S.match, ot = other(me), h = '';
     if (m && m.st === 'no' && m.by !== me) m = null; // refus : l'autre revoit l'écran de lancement
     if (ui.matchBusy) return skeletons(2);
     if (!m) {
       return '<div class="notice"><b>Match à deux.</b> Chacun de son côté (sur son téléphone), vous balayez une même sélection de titres : « Envie » ou « Pas envie ». Les titres que vous voulez tous les deux apparaissent ici.</div>' +
-        matchTypeSeg() + matchSrcSeg() + '<span class="help">« Ma liste » : vos titres « À voir » disponibles chez vous. « Hors liste » : des suggestions. « Mixte » : moitié-moitié.</span><button class="btn" data-act="matchstart">Lancer et inviter ' + esc(pname(ot)) + '</button><span class="help">La sélection mélange votre liste « À voir » et des suggestions pour vous deux, sur vos plateformes.</span>';
+        matchTypeSeg() + matchSrcSeg() + '<span class="help">« Ma liste » : vos titres « À voir » disponibles chez vous. « Hors liste » : des suggestions. « Mixte » : moitié-moitié.</span><button class="btn" data-act="matchstart">Lancer et inviter ' + esc(pname(ot)) + '</button><span class="help">La sélection mélange votre liste « À voir » et des suggestions pour vous deux, sur vos plateformes.</span>' + matchHistView();
     }
     var tyw = m.ty === 'film' ? 'de films' : m.ty === 'serie' ? 'de séries' : 'de films et séries';
     if (m.st === 'wait') {
@@ -946,7 +967,7 @@
       var inL = entry(c.id);
       return '<div class="sug" style="align-items:center"><button class="row" style="gap:12px;align-items:center" data-act="open" data-id="' + esc(c.id) + '">' + poster(c, 'sm') + '<span class="rb"><span class="title" style="font-size:16px">' + esc(c.t) + '</span><span class="meta" style="font-size:12px">' + meta(c) + '</span></span></button>' +
         (inL ? '<span class="st ok">' + (inL.status === 'seen' ? 'Vu' : 'Dans la liste') + '</span>' : '') + '</div>';
-    }).join('') : '<div class="empty">Pas encore de titre voulu par vous deux.</div>') + '</div>' +
+    }).join('') : '<div class="empty">Pas encore de titre voulu par vous deux.</div>') + '</div>' + matchHistView() +
       '<div class="group"><h2>Nouvelle partie</h2>' + matchTypeSeg() + matchSrcSeg() + '<button class="btn ghost" style="height:44px" data-act="matchstart">Lancer et inviter ' + esc(pname(ot)) + '</button></div>';
     return h;
   }
@@ -1358,6 +1379,27 @@
       if (sub) api('/api/push/status', { method: 'POST', body: { endpoint: sub.endpoint } }).then(function (r) { ui.push.prefs = r.prefs; if (ui.screen === 'settings') render(true); }).catch(function () {});
     }).catch(function () { ui.push = { st: 'off', endpoint: null, msg: '' }; });
   }
+  // Au démarrage : si l'appareil avait activé les notifications, on les garde actives après une mise à jour
+  // (abonnement perdu côté navigateur ou inconnu du serveur → réabonnement silencieux, préférences conservées côté serveur).
+  var PUSH_FLAG = 'maiwatch-push';
+  function ensurePush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window) || Notification.permission !== 'granted') return;
+    var wasOn = false; try { wasOn = localStorage.getItem(PUSH_FLAG) === '1'; } catch (e) {}
+    navigator.serviceWorker.ready.then(function (reg) {
+      return reg.pushManager.getSubscription().then(function (sub) {
+        if (sub) {
+          return api('/api/push/status', { method: 'POST', body: { endpoint: sub.endpoint } }).then(function (r) {
+            try { localStorage.setItem(PUSH_FLAG, '1'); } catch (e) {}
+            if (!r.subscribed) return api('/api/push/subscribe', { method: 'POST', body: { sub: sub.toJSON(), profile: me } });
+          });
+        }
+        if (!wasOn) return;
+        return api('/api/push/key').then(function (k) {
+          return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(k.publicKey) });
+        }).then(function (s) { return api('/api/push/subscribe', { method: 'POST', body: { sub: s.toJSON(), profile: me } }); });
+      });
+    }).catch(function () {});
+  }
   function loadTrakt() { api('/api/trakt-key').then(function (st) { ui.trakt = st; if (ui.screen === 'import') render(true); }).catch(function () {}); }
   function importFrom(url, user) {
     ui.impBusy = true; ui.impRows = null; render(true);
@@ -1593,12 +1635,12 @@
         return Promise.all(deck.map(function (c) {
           if (typeof c.ov === 'string') return null;
           return api('/api/title/' + encodeURIComponent(c.id)).then(function (d) { c.ov = (d.ov || '').slice(0, 280); if (d.trailer) c.tr = d.trailer; }).catch(function () { c.ov = ''; });
-        })).then(function () { S.match = { id: Date.now().toString(36), deck: deck, votes: { M: {}, E: {} }, at: todayISO(), ty: ty, src: src, by: me, st: 'wait' }; save(); toast('Invitation envoyée : la partie commence quand ' + pname(me === 'M' ? 'E' : 'M') + ' accepte.'); });
+        })).then(function () { archiveMatch(); S.match = { id: Date.now().toString(36), deck: deck, votes: { M: {}, E: {} }, at: todayISO(), ty: ty, src: src, by: me, st: 'wait' }; save(); toast('Invitation envoyée : la partie commence quand ' + pname(me === 'M' ? 'E' : 'M') + ' accepte.'); });
       }).finally(function () { ui.matchBusy = false; render(true); });
     },
     matchaccept: function () { if (S.match && S.match.st === 'wait') { S.match.st = 'on'; save(); render(true); } },
     matchdecline: function () { if (S.match && S.match.st === 'wait') { S.match.st = 'no'; save(); render(true); } },
-    matchcancel: function () { S.match = null; save(); render(true); },
+    matchcancel: function () { archiveMatch(); S.match = null; save(); render(true); },
     matchsrc: function (d) { ui.matchSrc = d.v; render(true); },
     matchty: function (d) { ui.matchTy = d.v; render(true); },
     gomatch: function () { ui.hist = []; ui.screen = 'envies'; ui.cs = 'match'; ui.sheet = null; render(); },
@@ -1638,12 +1680,13 @@
         return Promise.all([navigator.serviceWorker.ready, api('/api/push/key')]).then(function (r) {
           return r[0].pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(r[1].publicKey) });
         }).then(function (sub) {
-          return api('/api/push/subscribe', { method: 'POST', body: { sub: sub.toJSON(), profile: me } }).then(function () { ui.push = { st: 'on', endpoint: sub.endpoint, msg: 'Notifications activées sur cet appareil.', prefs: { added: true, release: true, gone: true, match: true, tonight: true } }; });
+          return api('/api/push/subscribe', { method: 'POST', body: { sub: sub.toJSON(), profile: me } }).then(function () { try { localStorage.setItem(PUSH_FLAG, '1'); } catch (e) {} ui.push = { st: 'on', endpoint: sub.endpoint, msg: 'Notifications activées sur cet appareil.', prefs: { added: true, release: true, gone: true, match: true, tonight: true } }; });
         });
       }).catch(function (e) { ui.push.msg = 'Impossible d’activer : ' + e.message; }).finally(function () { render(true); });
     },
     pushoff: function () {
       navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) {
+        try { localStorage.removeItem(PUSH_FLAG); } catch (e) {}
         if (!sub) return; var ep = sub.endpoint; return sub.unsubscribe().then(function () { return api('/api/push/unsubscribe', { method: 'POST', body: { endpoint: ep } }); });
       }).then(function () { ui.push = { st: 'off', endpoint: null, msg: 'Notifications désactivées.' }; }).catch(function (e) { ui.push.msg = e.message; }).finally(function () { render(true); });
     },
@@ -1880,7 +1923,7 @@
     api('/api/config').then(function (c) { CFG = c; }).catch(function () {}).then(function () {
       return pullState();
     }).then(function () {
-      if (S) { loadProviders(); handleLaunch(); maybeRefreshAvail(); }
+      if (S) { loadProviders(); handleLaunch(); maybeRefreshAvail(); ensurePush(); }
     });
   }
 
