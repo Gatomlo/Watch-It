@@ -116,10 +116,72 @@ function parseKey(id) {
   return m ? { media: m[1], num: Number(m[2]) } : null;
 }
 
+// --- Tolérance aux fautes de frappe : TMDB ne fait aucune recherche approximative. ---
+function norm(s) {
+  return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function lev(a, b) {
+  if (a === b) return 0;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+// Ressemblance 0..1 entre la saisie et un titre (le titre peut être plus long que la saisie).
+function similarity(q, title) {
+  const t = norm(title);
+  if (!q || !t) return 0;
+  const full = 1 - lev(q, t) / Math.max(q.length, t.length);
+  const head = 1 - lev(q, t.slice(0, q.length)) / Math.max(q.length, 1); // saisie partielle
+  return Math.max(full, head * 0.9);
+}
+
+// Requêtes de secours quand la recherche exacte ne donne rien : accents retirés,
+// préfixes raccourcis (la faute est souvent vers la fin), mots pris isolément.
+function fallbackQueries(q) {
+  const n = norm(q);
+  const out = new Set();
+  if (n && n !== q.toLowerCase()) out.add(n);
+  if (n.length > 5) {
+    out.add(n.slice(0, Math.max(4, Math.ceil(n.length * 0.7))).trim());
+    out.add(n.slice(0, Math.max(4, Math.ceil(n.length * 0.5))).trim());
+  }
+  const words = n.split(" ").filter((w) => w.length >= 3).sort((a, b) => b.length - a.length);
+  for (const w of words.slice(0, 2)) {
+    out.add(w);
+    if (w.length > 5) out.add(w.slice(0, Math.ceil(w.length * 0.6)));
+  }
+  out.delete(q);
+  return [...out].filter((s) => s.length >= 3).slice(0, 5);
+}
+
 async function search(q, year) {
   const genres = await genreMaps();
   const data = await call("/search/multi", { query: q, language: LANG, include_adult: "false" }, 6 * H);
   let items = (data.results || []).filter((r) => r.media_type === "movie" || r.media_type === "tv");
+  if (items.length < 3) {
+    const nq = norm(q);
+    const seen = new Set(items.map((r) => r.media_type + ":" + r.id));
+    const extra = await Promise.all(fallbackQueries(q).map((s) =>
+      call("/search/multi", { query: s, language: LANG, include_adult: "false" }, 6 * H).catch(() => ({ results: [] }))));
+    const found = [];
+    for (const d of extra) for (const r of d.results || []) {
+      if ((r.media_type !== "movie" && r.media_type !== "tv") || seen.has(r.media_type + ":" + r.id)) continue;
+      seen.add(r.media_type + ":" + r.id);
+      const sc = Math.max(similarity(nq, r.title || r.name), similarity(nq, r.original_title || r.original_name));
+      if (sc >= 0.55) found.push({ r, sc: sc + Math.min(0.1, (r.popularity || 0) / 1000) });
+    }
+    found.sort((a, b) => b.sc - a.sc);
+    items = items.concat(found.map((x) => x.r));
+  }
   if (year) {
     const exact = items.filter((r) => yearOf(r.release_date || r.first_air_date) === year);
     if (exact.length) items = exact;
