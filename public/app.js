@@ -884,12 +884,12 @@
   }
   function timeBlock() {
     var t = ui.tb, m = availMinutes();
-    var chips = [[0, 'Peu importe'], [60, '1 h'], [90, '1 h 30'], [120, '2 h'], [150, '2 h 30'], [180, '3 h']].map(function (c) {
+    var chips = [[0, 'Libre'], [60, '1 h'], [90, '1 h 30'], [120, '2 h'], [150, '2 h 30'], [180, '3 h']].map(function (c) {
       var on = c[0] === 0 ? t.mode === 'none' : (t.mode === 'dur' && t.min === c[0]);
-      return '<button class="chip" style="height:40px;padding:0 14px;font-size:13px;' + (on ? 'background:var(--accent);border-color:var(--accent);color:var(--ink);font-weight:700' : 'color:var(--soft)') + '" data-act="tbdur" data-v="' + c[0] + '" aria-pressed="' + on + '">' + c[1] + '</button>';
+      return '<button class="chip' + (on ? ' on' : '') + '" data-act="tbdur" data-v="' + c[0] + '" aria-pressed="' + on + '">' + c[1] + '</button>';
     }).join('');
     var summary = !m ? 'Sans contrainte de durée.' : (t.mode === 'dur' ? fmtLen(m) + ' disponibles : à partir de ' + tbStart() + ', fini avant ' + hm(toMin(tbStart()) + m) + '.' : fmtLen(m) + ' entre ' + tbStart() + ' et ' + t.end + '.');
-    return '<div class="group" style="gap:8px"><h2>Temps disponible</h2><div class="chips scroll">' + chips + '</div>' +
+    return '<div class="group" style="gap:8px"><h2>Temps disponible</h2><div class="segd" role="group" aria-label="Durée disponible">' + chips + '</div>' +
       '<div class="prog"><label class="help" for="tb-start" style="flex:none">De</label><input id="tb-start" type="time" class="fld" value="' + esc(tbStart()) + '" style="flex:1"><label class="help" for="tb-end" style="flex:none">à</label><input id="tb-end" type="time" class="fld" value="' + esc(t.end || '') + '" style="flex:1"></div>' +
       '<span class="help">' + esc(summary) + '</span></div>';
   }
@@ -976,7 +976,7 @@
   V.envies = function () {
     var csw = '<div class="seg" role="tablist">' + [['envie', 'Une envie'], ['match', 'Match à deux']].map(function (t) { return '<button class="chip' + (ui.cs === t[0] ? ' on' : '') + '" role="tab" aria-selected="' + (ui.cs === t[0]) + '" data-act="cs" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
     if (ui.cs === 'match') return header('Ce soir', '') + csw + (!CFG.tmdb ? noTmdb() : '') + matchView();
-    var chips = ['Cosy', 'Frissons sans gore', 'Un épisode de 40 min'].map(function (t) { return '<button class="chip" style="height:36px;padding:0 14px;font-size:13px;color:var(--soft)" data-act="chip" data-v="' + esc(t) + '">' + t + '</button>'; }).join('');
+    var chips = ['Cosy', 'Frissons sans gore', 'Un épisode de 40 min'].map(function (t) { return '<button class="chip" data-act="chip" data-v="' + esc(t) + '">' + t + '</button>'; }).join('');
     var r = ui.env, out = '';
     if (ui.envBusy) out = '<div class="spin">' + (CFG.ai.hasKey ? esc(PROVS[CFG.ai.provider]) + ' réfléchit…' : 'Recherche…') + '</div>' + skeletons(2);
     else if (r && r.error) out = errBox(r.error);
@@ -993,7 +993,7 @@
     }
     return header('Ce soir', '') + csw + (!CFG.tmdb ? noTmdb() : '') +
       '<label for="envie" style="position:absolute;left:-9999px">Décrivez votre envie</label><textarea id="envie" class="ta hi" rows="3" placeholder="Quelque chose de léger, moins de 2 h, qui ne fait pas trop peur…">' + esc(ui.envie) + '</textarea>' +
-      '<div class="chips scroll">' + chips + '</div>' + timeBlock() +
+      '<div class="chips grid3">' + chips + '</div>' + timeBlock() +
       '<div style="display:flex;gap:10px;align-items:center"><button class="btn" data-act="envie"' + (ui.envBusy ? ' disabled' : '') + '>Trouver</button><span class="help" style="flex:none;text-align:right">' + (CFG.ai.hasKey ? 'via ' + esc(PROVS[CFG.ai.provider]) : 'mots-clés') + '<br>vos plateformes</span></div>' +
       (!CFG.ai.hasKey ? '<div class="tip">' + I('spark') + '<span>Sans clé API, la recherche repère des mots-clés (durée, ton, série ou film). Ajoutez une clé dans les <button class="link" style="padding:0;min-height:0;color:var(--fg)" data-act="push" data-to="settings">réglages</button> pour décrire librement vos envies.</span></div>' : '') + out;
   };

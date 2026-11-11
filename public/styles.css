@@ -41,6 +41,11 @@ h2{margin:0;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:u
 .chips.scroll{flex-wrap:nowrap;overflow-x:auto;margin-right:calc(-1 * max(20px,env(safe-area-inset-right,0px)));padding-right:20px;scrollbar-width:none}
 .chip{flex:none;height:44px;padding:0 16px;border-radius:22px;border:1px solid var(--line);background:transparent;font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:8px}
 .chip.on{background:var(--accent);border-color:var(--accent);color:var(--ink);font-weight:700}
+.chips.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.chips.grid3 .chip{height:56px;padding:0 8px;border-radius:16px;font-size:13px;line-height:1.2;text-align:center;justify-content:center;color:var(--soft)}
+.segd{display:flex;gap:2px;padding:4px;border:1px solid var(--line);border-radius:26px}
+.segd .chip{flex:1;justify-content:center;padding:0;border:0;height:44px;font-size:13px;color:var(--soft)}
+.segd .chip.on{color:var(--ink)}
 .chip.p{border-radius:12px;font-size:13px}
 .chip.p.on{background:var(--surface2);border-color:var(--accent);color:var(--fg)}
 .chip small{color:var(--muted);font-size:13px;font-weight:500}
