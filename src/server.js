@@ -245,6 +245,16 @@ app.get("/api/title/:id/links", requireAuth, wrap(async (req, res) => {
   res.json(await streaming.links(req.params.id, engine.region(db.getState())));
 }));
 
+// Acteurs et réalisation de plusieurs titres (pour la recherche texte de la liste), mis en cache par TMDB.
+app.post("/api/credits", requireAuth, wrap(async (req, res) => {
+  const ids = (Array.isArray(req.body && req.body.ids) ? req.body.ids : []).filter((x) => tmdb.parseKey(x)).slice(0, 25);
+  const region = engine.region(db.getState()), out = {};
+  await engine.pmap(ids, 4, async (id) => {
+    try { const d = await tmdb.details(id, region, { bust: true }); out[id] = { c: d.cast || [], d: d.dir || [] }; } catch (e) { /* titre ignoré */ }
+  });
+  res.json(out);
+}));
+
 app.get("/api/title/:id", requireAuth, wrap(async (req, res) => {
   const d = await tmdb.details(req.params.id, engine.region(db.getState()));
   delete d.recs;

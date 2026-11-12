@@ -77,7 +77,7 @@
     screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
     tab: 'me', sug: {}, sugOff: {}, mi: {}, sugVer: 0, epOpen: false, epSeason: null, epData: {}, epExp: {}, epErr: {}, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
     impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false,
-    sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], who: 'all', lk: {}, colOpen: null, colq: '', noteEdit: null, noteDraft: null, drawWho: 'both', matchTy: 'all', matchSrc: 'mix', saMode: null, saMsg: '', saBusy: false, tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
+    sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], who: 'all', lk: {}, lq: '', castBusy: false, colOpen: null, colq: '', noteEdit: null, noteDraft: null, drawWho: 'both', matchTy: 'all', matchSrc: 'mix', saMode: null, saMsg: '', saBusy: false, tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
   };
   var booted = false, isAuthenticated = false, currentUsername = '';
 
@@ -404,8 +404,18 @@
     if (skip !== 'plat' && ui.plats.length) { var a = AV[it.id]; if (!a || !a.f.some(function (p) { return ui.plats.indexOf(p) >= 0; })) return false; }
     if (skip !== 'genre' && ui.genres.length && !(it.g || []).some(function (g) { return ui.genres.indexOf(g) >= 0; })) return false;
     if (skip !== 'col' && ui.cols.length) { var en = entry(it.id); if (!en || !(en.l || []).some(function (l) { return ui.cols.indexOf(l) >= 0; })) return false; }
+    if (ui.lq && ui.screen !== 'sug') { var eq = entry(it.id) || it; if (!textOk(eq)) return false; }
     if (skip !== 'who' && ui.who !== 'all') { var ew = entry(it.id); if (ew && ew.status === 'todo' && !whoOk(ew)) return false; }
     return true;
+  }
+  // Recherche texte : tous les mots saisis doivent se retrouver (titre, année, genres, note, listes, acteurs, réalisation).
+  function haystack(e) {
+    var cols = (e.l || []).map(colName).join(' ');
+    return norm([e.t, e.y, (e.g || []).join(' '), e.note, cols, (e.cast || []).join(' '), (e.dir || []).join(' ')].join(' '));
+  }
+  function textOk(e) {
+    var h = haystack(e);
+    return norm(ui.lq).split(' ').filter(Boolean).every(function (w) { return h.indexOf(w) >= 0; });
   }
   function other() { return me === 'M' ? 'E' : 'M'; }
   function whoOk(e, w) {
@@ -632,18 +642,61 @@
     return '<button class="notice newsb" data-act="gomatch"><span><b>' + esc(pname(o)) + ' vous invite à un Match à deux</b><br><span class="help">' + (m.ty === 'film' ? 'Films' : m.ty === 'serie' ? 'Séries' : 'Films et séries') + ' · à accepter pour commencer</span></span>' + I('chev') + '</button>';
   }
 
-  V.home = function () {
+  function refreshList() {
+    var el = document.getElementById('lst'); if (!el) return;
+    if (ui.screen === 'home') el.innerHTML = todoListHtml(); else if (ui.screen === 'seen') el.innerHTML = seenListHtml();
+  }
+  // Acteurs et réalisation ne sont pas dans la liste au départ : récupérés une fois, à la première recherche, puis gardés dans chaque titre.
+  var castTried = {};
+  function ensureCast() {
+    if (norm(ui.lq).length < 2 || ui.castBusy || !CFG.tmdb || navigator.onLine === false) return;
+    var miss = S.list.filter(function (e) { return e.cast === undefined && !castTried[e.id] && /^(movie|tv):\d+$/.test(e.id); });
+    if (!miss.length) return;
+    ui.castBusy = true; refreshList();
+    function done() { ui.castBusy = false; refreshList(); }
+    (function next() {
+      var b = miss.splice(0, 20); if (!b.length) { save(); done(); return; }
+      b.forEach(function (e) { castTried[e.id] = true; });
+      api('/api/credits', { method: 'POST', body: { ids: b.map(function (e) { return e.id; }) } }).then(function (r) {
+        b.forEach(function (e) { var c = r[e.id]; if (c) { e.cast = c.c; e.dir = c.d; } });
+        refreshList(); next();
+      }).catch(function () { save(); done(); });
+    })();
+  }
+  function searchBox(ph) {
+    return '<div class="sbox"><label for="lq" style="position:absolute;left:-9999px">Rechercher dans la liste</label><input id="lq" class="fsearch" type="search" autocomplete="off" placeholder="' + esc(ph) + '" value="' + esc(ui.lq) + '"></div>';
+  }
+  function emptyMsg(total, what) {
+    return '<div class="empty">' + (total ? 'Aucun titre ne correspond ' + (ui.lq ? 'à « ' + esc(ui.lq) + ' » et aux filtres.' : 'à ces filtres.') + '<br><button class="link" data-act="resetf">Effacer la recherche et les filtres</button>' : what) + '</div>';
+  }
+  function castNote() { return ui.castBusy ? '<span class="help">Recherche des acteurs et réalisateurs…</span>' : ''; }
+  function todoListHtml() {
     var todo = S.list.filter(function (e) { return e.status === 'todo'; }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
-    var nAv = todo.filter(function (e) { return avail(e).length; }).length;
     var shown = todo.filter(function (e) { return passes(e); });
+    return castNote() + (shown.length ? '<div class="list">' + shown.map(function (e) { return rowHtml(e, e); }).join('') + '</div>' : emptyMsg(todo.length, 'Rien dans la liste pour l’instant.<br>Touchez + ou partagez un lien depuis Signal.'));
+  }
+  function seenListHtml() {
+    var all = S.list.filter(function (e) { return e.status === 'seen'; }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
+    var seen = all.filter(function (e) { return passes(e); });
+    function th(e, u) { var r = e.r[u]; return '<span class="badge' + (r ? '' : ' mut') + '">' + esc(initial(u)) + ' ' + (r ? '★ ' + r : 'pas noté') + '</span>'; }
+    return castNote() + (seen.length ? '<div class="list">' + seen.map(function (e) {
+      return '<button class="row" data-act="open" data-id="' + esc(e.id) + '">' + poster(e) + '<span class="rb"><span class="title">' + esc(e.t) + '</span><span class="meta">' + meta(e) + '</span><span class="badges">' + th(e, 'M') + th(e, 'E') + '</span></span></button>';
+    }).join('') + '</div>' : emptyMsg(all.length, 'Rien de vu pour l’instant. Marquez un titre comme vu pour le noter.'));
+  }
+  V.home = function () {
+    var todo = S.list.filter(function (e) { return e.status === 'todo'; });
+    var nAv = todo.filter(function (e) { return avail(e).length; }).length;
     var sub = todo.length + ' titre' + (todo.length > 1 ? 's' : '') + (platsOn().length ? ' · ' + nAv + ' dispo sur vos plateformes' : '');
     var pend = pending(), o = me === 'M' ? 'E' : 'M';
     var newsBanner = pend.length ? '<button class="notice newsb" data-act="push" data-to="news"><span><b>' + esc(pname(o)) + ' a ajouté ' + pend.length + ' titre' + (pend.length > 1 ? 's' : '') + '</b><br><span class="help">Dites si vous voulez les voir aussi</span></span>' + I('chev') + '</button>' : '';
     return header('À voir', sub) + installBanner() + tonightBanner() + matchInviteBanner() + newsBanner + (!CFG.tmdb ? noTmdb() : '') +
       (!platsOn().length && todo.length ? '<div class="notice"><b>Choisissez vos plateformes</b> dans les <button class="link" style="padding:0;min-height:0;color:var(--fg)" data-act="push" data-to="settings">réglages</button> pour voir ce qui est disponible chez vous.</div>' : '') +
-      filterBar('<button class="fbtn rand" data-act="draw">' + I('dice') + 'Au hasard</button>') +
-      (shown.length ? '<div class="list">' + shown.map(function (e) { return rowHtml(e, e); }).join('') + '</div>' :
-        '<div class="empty">' + (todo.length ? 'Aucun titre ne correspond à ces filtres.<br><button class="link" data-act="resetf">Effacer les filtres</button>' : 'Rien dans la liste pour l’instant.<br>Touchez + ou partagez un lien depuis Signal.') + '</div>');
+      searchBox('Rechercher : titre, acteur, genre, note…') +
+      filterBar('<button class="fbtn rand" data-act="draw">' + I('dice') + 'Au hasard</button>') + '<div id="lst">' + todoListHtml() + '</div>';
+  };
+  V.seen = function () {
+    var all = S.list.filter(function (e) { return e.status === 'seen'; });
+    return header('Vus', all.length + ' titre' + (all.length > 1 ? 's' : '') + ' · vos notes alimentent les suggestions') + searchBox('Rechercher : titre, acteur, genre, note…') + filterBar() + '<div id="lst">' + seenListHtml() + '</div>';
   };
 
   V.news = function () {
@@ -657,15 +710,6 @@
       (rows ? '<div class="list">' + rows + '</div>' : '<div class="empty">Rien de nouveau : vous avez tout passé en revue.</div>');
   };
 
-  V.seen = function () {
-    var all = S.list.filter(function (e) { return e.status === 'seen'; }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
-    var seen = all.filter(function (e) { return passes(e); });
-    function th(e, u) { var r = e.r[u]; return '<span class="badge' + (r ? '' : ' mut') + '">' + esc(initial(u)) + ' ' + (r ? '★ ' + r : 'pas noté') + '</span>'; }
-    return header('Vus', all.length + ' titre' + (all.length > 1 ? 's' : '') + ' · vos notes alimentent les suggestions') + filterBar() +
-      (seen.length ? '<div class="list">' + seen.map(function (e) {
-        return '<button class="row" data-act="open" data-id="' + esc(e.id) + '">' + poster(e) + '<span class="rb"><span class="title">' + esc(e.t) + '</span><span class="meta">' + meta(e) + '</span><span class="badges">' + th(e, 'M') + th(e, 'E') + '</span></span></button>';
-      }).join('') + '</div>' : '<div class="empty">Rien de vu pour l’instant. Marquez un titre comme vu pour le noter.</div>');
-  };
 
   V.detail = function () {
     var id = ui.detail, e = entry(id), d = ui.dd && ui.dd.id === id ? ui.dd : null, it = d || e || KNOWN[id];
@@ -1287,10 +1331,12 @@
     if (!S) { appEl.innerHTML = '<div class="loading"><img src="' + BASE + '/logo.svg" alt="">Pas de connexion au serveur.<br>La liste s’affichera dès que le réseau revient.</div>'; return; }
     renderDeferred = false;
     var fb = document.querySelector('.fbody'), fs = fb ? fb.scrollTop : 0;
+    var af = document.activeElement, keepLq = af && af.id === 'lq' ? af.selectionStart : null;
     appEl.innerHTML = V[ui.screen]() + (MAIN[ui.screen] ? nav() : '');
     if (!(ui.sheet && ui.sheet.type === 'trailer' && layer.querySelector('.tframe'))) layer.innerHTML = sheetHtml();
     var fb2 = document.querySelector('.fbody'); if (fb2) fb2.scrollTop = fs;
     if (keepScroll) window.scrollTo(0, y); else window.scrollTo(0, 0);
+    if (keepLq != null) { var lqi = document.getElementById('lq'); if (lqi) { lqi.focus(); try { lqi.setSelectionRange(keepLq, keepLq); } catch (e) {} } }
   }
   var toastTimer = null, toastFn = null;
   function toast(msg, label, fn) {
@@ -1324,6 +1370,7 @@
         var ch = false;
         ['len', 'y', 'p'].forEach(function (k) { if (!e[k] && d[k]) { e[k] = d[k]; ch = true; } });
         if ((!e.g || !e.g.length) && d.g.length) { e.g = d.g; ch = true; }
+        if (e.cast === undefined && d.cast) { e.cast = d.cast; e.dir = d.dir || []; ch = true; }
         if (ch) save();
       }
       if (ui.screen === 'detail') safeRender();
@@ -1411,7 +1458,7 @@
   }
 
   var A = {
-    go: function (d) { ui.plats = []; ui.genres = []; ui.cols = []; ui.who = 'all'; go(d.to, false); },
+    go: function (d) { ui.plats = []; ui.genres = []; ui.cols = []; ui.who = 'all'; ui.lq = ''; go(d.to, false); },
     push: function (d) { go(d.to, true); },
     sset: function (d) { ui.keyEdit = {}; ui.keyConfirm = null; ui.sset = d.v; if (d.v === 'plats') { loadProviders(); ui.pvq = ''; } if (d.v === 'notif') refreshPush(); render(); },
     back: function () { if (ui.screen === 'settings' && ui.sset !== 'menu') { ui.sset = 'menu'; ui.keyEdit = {}; ui.keyConfirm = null; render(); return; } var h = ui.hist.pop(); if (h) { ui.screen = h.screen; ui.detail = h.detail; ui.sheet = null; render(true); } else go('home'); },
@@ -1450,7 +1497,7 @@
       render(true);
     },
     openfilter: function () { ui.sheet = { type: 'filter', scr: ui.screen }; ui.fq = ''; ui.fexp = false; render(true); },
-    resetf: function () { ui.plats = []; ui.genres = []; ui.cols = []; ui.who = 'all'; ui.sugOff = {}; render(true); },
+    resetf: function () { ui.plats = []; ui.genres = []; ui.cols = []; ui.who = 'all'; ui.lq = ''; ui.sugOff = {}; render(true); },
     fexp: function () { ui.fexp = !ui.fexp; render(true); },
     closesheet: function () { ui.sheet = null; render(true); },
     tab: function (d) { ui.tab = d.v; render(true); },
@@ -1803,6 +1850,7 @@
     else if (t.id === 'pvq') { ui.pvq = t.value; var plist = document.getElementById('pvlist'); if (plist) plist.innerHTML = platRows(); }
     else if (t.id === 'envie') ui.envie = t.value;
     else if (t.id === 'imp') ui.impText = t.value;
+    else if (t.id === 'lq') { ui.lq = t.value; refreshList(); clearTimeout(A._cq); A._cq = setTimeout(ensureCast, 350); }
     else if (t.id === 'colq') { ui.colq = t.value; var cl = document.getElementById('collist'); if (cl) cl.innerHTML = colList(ui.colOpen); }
     else if (t.dataset && t.dataset.draft) ui.noteDraft = t.value;
   });
