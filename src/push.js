@@ -12,7 +12,7 @@ const tmdb = require("./tmdb");
 store.db.exec("CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, data TEXT NOT NULL, profile TEXT NOT NULL DEFAULT 'M', created_at TEXT NOT NULL DEFAULT (datetime('now')))");
 
 try { store.db.exec("ALTER TABLE push_subs ADD COLUMN prefs TEXT NOT NULL DEFAULT '{}'"); } catch (e) { /* colonne déjà présente */ }
-const KINDS = ["added", "release", "gone", "match", "tonight"]; // préférences par appareil, toutes actives par défaut
+const KINDS = ["added", "release", "gone", "avail", "match", "tonight"]; // préférences par appareil, toutes actives par défaut
 
 function vapid() {
   let pub = store.getSecret("vapid_pub"), priv = (store.getSecret("vapid_priv") && decrypt(store.getSecret("vapid_priv"))) || null;
@@ -82,7 +82,7 @@ async function watch() {
   if (!tmdb.configured() || !plats.length) return { checked: 0, gone: 0 };
   const today = new Date().toISOString().slice(0, 10);
   const todo = state.list.filter((e) => e.status === "todo" && tmdb.parseKey(e.id));
-  const gone = [];
+  const gone = [], appeared = [];
   let changed = false;
   for (const e of todo) {
     let d;
@@ -95,22 +95,32 @@ async function watch() {
     const fresh = now.filter((p) => prev.indexOf(p) < 0 && plats.indexOf(p) >= 0);
     if (lost.length) { e.alert = { k: "gone", p: lost[0], at: today }; gone.push({ e, p: lost[0] }); }
     else if (fresh.length) e.alert = { k: "new", p: fresh[0], at: today };
+    if (fresh.length) appeared.push({ e, p: fresh[0] }); // le titre arrive sur une plateforme du foyer
     e.av = { f: now.slice(), at: today };
     changed = true;
   }
   // Écriture seulement si personne n'a modifié l'état entre-temps (sinon, au prochain passage).
   if (changed && store.saveState(state, version) == null) return { checked: todo.length, gone: 0, skipped: true };
-  if (gone.length) {
-    const names = {};
+  const names = {};
+  if (gone.length || appeared.length) {
     try {
       const list = await tmdb.providers(region);
       list.forEach((p) => { names[p.id] = p.name; });
     } catch (err) {}
-    const nm = (id) => names[id] || "une de vos plateformes";
+  }
+  const nm = (id) => names[id] || "une de vos plateformes";
+  // Titres de la liste qui deviennent disponibles chez vous : prévient chaque profil qui veut le voir.
+  for (const u of ["M", "E"]) {
+    const mine = appeared.filter((a) => wantsIt(a.e, u));
+    if (!mine.length) continue;
+    const body = mine.length === 1 ? "« " + mine[0].e.t + " » est maintenant sur " + nm(mine[0].p) + "." : mine.length + " titres de votre liste arrivent sur vos plateformes : " + mine.slice(0, 3).map((a) => "« " + a.e.t + " »").join(", ") + (mine.length > 3 ? "…" : "") + ".";
+    await send({ title: "Watch-It · Disponible", body, tag: "maiwatch-avail", url: "./" }, null, "avail", u).catch(() => 0);
+  }
+  if (gone.length) {
     const body = gone.length === 1 ? "« " + gone[0].e.t + " » n'est plus sur " + nm(gone[0].p) + "." : gone.length + " titres de votre liste quittent vos plateformes : " + gone.slice(0, 3).map((g) => "« " + g.e.t + " »").join(", ") + ".";
     await send({ title: "Watch-It", body, tag: "maiwatch-gone", url: "./" }, null, "gone");
   }
-  return { checked: todo.length, gone: gone.length };
+  return { checked: todo.length, gone: gone.length, appeared: appeared.length };
 }
 
 // --- Nouveaux ajouts de l'autre profil : regroupés 45 s pour ne pas notifier titre par titre ---
