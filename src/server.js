@@ -256,7 +256,8 @@ app.post("/api/credits", requireAuth, wrap(async (req, res) => {
 }));
 
 app.get("/api/title/:id", requireAuth, wrap(async (req, res) => {
-  const d = await tmdb.details(req.params.id, engine.region(db.getState()));
+  const st = db.getState(), region = engine.region(st);
+  const d = await streaming.enrich(await tmdb.details(req.params.id, region), region, (st.settings && st.settings.platforms) || []);
   delete d.recs;
   res.json(d);
 }));
@@ -267,7 +268,11 @@ app.post("/api/availability", requireAuth, wrap(async (req, res) => {
   const region = engine.region(db.getState());
   const out = {};
   const bust = !!(req.body && req.body.fresh);
-  const list = await engine.pmap(ids, 6, (id) => tmdb.details(id, region, bust ? { bust: true } : undefined));
+  const plats = (db.getState().settings && db.getState().settings.platforms) || [];
+  const list = await engine.pmap(ids, 6, async (id) => {
+    const d = await tmdb.details(id, region, bust ? { bust: true } : undefined);
+    return streaming.enrich(d, region, plats, bust);
+  });
   ids.forEach((id, i) => {
     const d = list[i];
     if (!d) return;

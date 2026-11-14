@@ -53,14 +53,14 @@ function clear() { ["sa_key", "sa_mode"].forEach((n) => store.deleteSecret(n)); 
 
 const TYPE_ORDER = { subscription: 0, free: 1, addon: 2, rent: 3, buy: 4 };
 // Liens directs d'un titre (id « movie:123 » ou « tv:456 ») dans un pays : [{ service, name, type, link }].
-async function links(id, region) {
+async function links(id, region, fresh) {
   const key = getKey();
   if (!key) throw fail("Clé Streaming Availability non configurée.", 400);
   const k = tmdb.parseKey(id);
   if (!k) throw fail("bad_id", 400);
   const country = String(region || "BE").toLowerCase();
   const ck = "sa:" + k.media + ":" + k.num + ":" + country;
-  const hit = store.cacheGet(ck);
+  const hit = fresh ? null : store.cacheGet(ck);
   if (hit) return hit;
   const res = await fetchShow(k.media + "/" + k.num, country, key, mode()).catch(() => { throw fail("Streaming Availability est injoignable."); });
   let out = [];
@@ -78,4 +78,35 @@ async function links(id, region) {
   return out;
 }
 
-module.exports = { status, save, clear, check, links, mode };
+// Marque d'une plateforme d'après son nom (même logique que le front : TMDB et SA nomment un peu différemment).
+function norm(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim(); }
+function brandOf(name) {
+  const n = norm(name);
+  if (/netflix/.test(n)) return "netflix";
+  if (/\bhbo\b|\bmax\b/.test(n)) return "max";
+  if (/prime video|amazon prime/.test(n)) return "prime";
+  if (/disney/.test(n)) return "disney";
+  if (/apple tv/.test(n)) return "apple";
+  if (/canal/.test(n)) return "canal";
+  if (/paramount/.test(n)) return "paramount";
+  if (/youtube/.test(n)) return "youtube";
+  return n;
+}
+
+// Seconde source de disponibilité : si une clé est configurée et que TMDB ne place pas le titre sur une
+// plateforme du foyer, complète `d.av.f` avec les offres d'abonnement/gratuit/add-on de Streaming Availability
+// (traduites en identifiants de plateformes TMDB). Silencieux en cas d'erreur ; économise le quota autrement.
+async function enrich(d, region, platIds, fresh) {
+  if (!d || !d.av || !getKey()) return d;
+  if ((platIds || []).length && d.av.f.some((p) => platIds.indexOf(p) >= 0)) return d;
+  let ls;
+  try { ls = await links(d.id, region, fresh); } catch (e) { return d; }
+  const brands = new Set(ls.filter((l) => l.type === "subscription" || l.type === "free" || l.type === "addon").map((l) => brandOf(l.name)));
+  if (!brands.size) return d;
+  let provs = [];
+  try { provs = await tmdb.providers(region); } catch (e) { return d; }
+  provs.forEach((p) => { if (brands.has(brandOf(p.name)) && d.av.f.indexOf(p.id) < 0) d.av.f.push(p.id); });
+  return d;
+}
+
+module.exports = { status, save, clear, check, links, mode, enrich };
