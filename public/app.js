@@ -465,17 +465,16 @@
     return 'Série' + (it.y ? ' · ' + it.y : '') + (it.seasons ? ' · ' + it.seasons + ' saison' + (it.seasons > 1 ? 's' : '') : '') + (it.len ? ' · ' + it.len + ' min' : '');
   }
   // Badge plateforme : logo + nom ; sur téléphone le nom est masqué (lecteurs d'écran : conservé) quand le logo existe.
-  function platBadge(id) {
+  function platBadge(id, isNew) {
     var hasLogo = !!(PV[id] && PV[id].logo);
-    return '<span class="badge pb" title="' + esc(pnameOf(id)) + '">' + logoOf(id) + '<span' + (hasLogo ? ' class="pn"' : '') + '>' + esc(pnameOf(id)) + '</span></span>';
+    return '<span class="badge pb' + (isNew ? ' new' : '') + '" title="' + esc(pnameOf(id) + (isNew ? ' : nouveau' : '')) + '">' + logoOf(id) + '<span' + (hasLogo ? ' class="pn"' : '') + '>' + esc(pnameOf(id)) + '</span></span>';
   }
   function badges(it, av) {
     var a = av || AV[it.id], mine = a ? a.f.filter(function (p) { return platsOn().indexOf(p) >= 0; }) : [], h = '';
-    mine.forEach(function (p) { h += platBadge(p); });
-    var e = entry(it.id);
-    if (e && e.alert && daysSince(e.alert.at) <= (e.alert.k === 'new' ? 7 : 21) && e.status === 'todo') {
-      h += e.alert.k === 'gone' ? '<span class="badge warn">N’est plus sur ' + esc(pnameOf(e.alert.p)) + '</span>' : '<span class="badge ok">Nouveau sur ' + esc(pnameOf(e.alert.p)) + '</span>';
-    }
+    var e = entry(it.id), al = e && e.alert && e.status === 'todo' ? e.alert : null;
+    var newP = al && al.k === 'new' && daysSince(al.at) <= 7 ? al.p : null; // « nouveau » : fond vert sur l'icône, 7 jours
+    mine.forEach(function (p) { h += platBadge(p, p === newP || (newP != null && famIds(newP).indexOf(p) >= 0)); });
+    if (al && al.k === 'gone' && daysSince(al.at) <= 21) h += '<span class="badge warn">N’est plus sur ' + esc(pnameOf(al.p)) + '</span>';
     if (e && e.l && e.l.length) e.l.slice(0, 2).forEach(function (l) { var nm = colName(l); if (nm) h += '<span class="badge soft">' + esc(nm) + '</span>'; });
     if (e && e.status === 'todo' && it.d && it.d > todayISO()) h += '<span class="badge soft">Sortie le ' + fmtDate(it.d) + '</span>';
     if (e && e.status === 'todo' && it.ty === 'serie') h += progBadge(e, a);
@@ -504,7 +503,7 @@
   function progBadge(e, a) {
     if (!a || !a.se || !e.prog || !e.prog.s) return '';
     var n = nextEp(e, a);
-    if (n && airedUpTo(a, n)) return '<span class="badge go">Reprendre : S' + n.s + 'E' + n.e + '</span>';
+    if (n && airedUpTo(a, n)) return '<span class="badge go" title="Reprendre à S' + n.s + 'E' + n.e + '">S' + n.s + 'E' + n.e + '</span>';
     if (a.next && a.next.date) return '<span class="badge soft">Prochain épisode le ' + fmtDate(a.next.date) + '</span>';
     if (!n && a.ended) return '<span class="badge ok">Terminée : à marquer comme vue</span>';
     return '<span class="badge soft">À jour : S' + e.prog.s + 'E' + e.prog.e + '</span>';
