@@ -49,6 +49,7 @@
     file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5"/>', out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
     tv: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
     tvoff: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4M3 3l18 18"/>',
+    edit: '<path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/>',
     star: '<path d="M12 2.8l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.7 6.1 21l1.2-6.6L2.5 9.8l6.6-.9z"/>',
     filter: '<path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h11M21 18h-1"/><circle cx="16" cy="6" r="2.2"/><circle cx="10" cy="12" r="2.2"/><circle cx="17.5" cy="18" r="2.2"/>'
   };
@@ -464,7 +465,26 @@
     if (it.ty === 'film') return 'Film' + (it.y ? ' · ' + it.y : '') + (it.len ? ' · ' + fmtLen(it.len) : '');
     return 'Série' + (it.y ? ' · ' + it.y : '') + (it.seasons ? ' · ' + it.seasons + ' saison' + (it.seasons > 1 ? 's' : '') : '') + (it.len ? ' · ' + it.len + ' min' : '');
   }
+  // Plateformes personnalisées (saisies à la main, sans mise à jour automatique) :
+  // S.settings.cplats = [{id,name}] ; par titre e.cp = [{id, at}] (at = date de saisie).
+  function cplats() { return (S.settings && S.settings.cplats) || []; }
+  function cplatName(id) { for (var i = 0; i < cplats().length; i++) if (cplats()[i].id === id) return cplats()[i].name; return ''; }
+  function cpOf(e) { return e && e.cp ? e.cp.filter(function (c) { return cplatName(c.id); }) : []; }
+  function cpBadge(c) {
+    var old = daysSince(c.at) > 60;
+    return '<span class="badge cust" title="' + esc(cplatName(c.id) + ' : saisi à la main le ' + fmtDate(c.at) + (old ? ' (à revérifier)' : '') + ', ne se met pas à jour tout seul') + '">' + I('edit') + esc(cplatName(c.id)) + (old ? ' ?' : '') + '</span>';
+  }
   // Badge plateforme : logo + nom ; sur téléphone le nom est masqué (lecteurs d'écran : conservé) quand le logo existe.
+  function cpSection(e, id) {
+    if (!e) return '';
+    var list = cplats();
+    if (!list.length) return '<span class="help">Une plateforme absente de TMDB (Auvio, TF1+…) ? Ajoutez-la dans Réglages > Plateformes, puis cochez-la ici.</span>';
+    var on = {}; (e.cp || []).forEach(function (c) { on[c.id] = c; });
+    return '<div class="group cpg"><div class="sec"><h2>Ajouté à la main</h2></div><div class="chips">' + list.map(function (c) {
+      var o = on[c.id];
+      return '<button class="chip cust' + (o ? ' on' : '') + '" data-act="cptog" data-id="' + esc(id) + '" data-c="' + esc(c.id) + '" aria-pressed="' + !!o + '">' + I('edit') + esc(c.name) + (o ? ' · ' + esc(fmtDate(o.at)) + (daysSince(o.at) > 60 ? ' · à revérifier' : '') : '') + '</button>';
+    }).join('') + '</div><span class="help">Information saisie par vous : elle ne se met pas à jour automatiquement.</span></div>';
+  }
   function platBadge(id, isNew) {
     var hasLogo = !!(PV[id] && PV[id].logo);
     return '<span class="badge pb' + (isNew ? ' new' : '') + '" title="' + esc(pnameOf(id) + (isNew ? ' : nouveau' : '')) + '">' + logoOf(id) + '<span' + (hasLogo ? ' class="pn"' : '') + '>' + esc(pnameOf(id)) + '</span></span>';
@@ -474,6 +494,8 @@
     var e = entry(it.id), al = e && e.alert && e.status === 'todo' ? e.alert : null;
     var newP = al && al.k === 'new' && daysSince(al.at) <= 7 ? al.p : null; // « nouveau » : fond vert sur l'icône, 7 jours
     mine.forEach(function (p) { h += platBadge(p, p === newP || (newP != null && famIds(newP).indexOf(p) >= 0)); });
+    var cps = e && e.status === 'todo' ? cpOf(e) : [];
+    cps.forEach(function (c) { h += cpBadge(c); });
     if (al && al.k === 'gone' && daysSince(al.at) <= 21) h += '<span class="badge warn">N’est plus sur ' + esc(pnameOf(al.p)) + '</span>';
     if (e && e.l && e.l.length) e.l.slice(0, 2).forEach(function (l) { var nm = colName(l); if (nm) h += '<span class="badge soft">' + esc(nm) + '</span>'; });
     if (e && e.status === 'todo' && it.d && it.d > todayISO()) h += '<span class="badge soft">Sortie le ' + fmtDate(it.d) + '</span>';
@@ -481,7 +503,7 @@
     var soon = !!(it.d && it.d > todayISO());
     if (soon) return '<div class="badges">' + h + '</div>';
     if (!a) h += '<span class="badge mut">Plateformes…</span>';
-    else if (!mine.length) h += a.f.length ? '<span class="badge mut" title="Sur d’autres plateformes" aria-label="Sur d’autres plateformes">' + I('tv') + '</span>' : (a.r.length || a.b.length ? '<span class="badge warn" title="Location ou achat" aria-label="Location ou achat">€</span>' : '<span class="badge warn" title="Pas en streaming" aria-label="Pas en streaming">' + I('tvoff') + '</span>');
+    else if (!mine.length && !cps.length) h += a.f.length ? '<span class="badge mut" title="Sur d’autres plateformes" aria-label="Sur d’autres plateformes">' + I('tv') + '</span>' : (a.r.length || a.b.length ? '<span class="badge warn" title="Location ou achat" aria-label="Location ou achat">€</span>' : '<span class="badge warn" title="Pas en streaming" aria-label="Pas en streaming">' + I('tvoff') + '</span>');
     if (a) h += a.trailer ? '<span class="badge soft tr" title="Bande-annonce disponible">' + I('play') + '<span class="tn">Bande-annonce</span></span>' : '<span class="badge mut tr" title="Pas de bande-annonce">' + I('play') + '<span class="tn">Sans bande-annonce</span></span>';
     return '<div class="badges">' + h + '</div>';
   }
@@ -805,7 +827,7 @@
     else dock = '<button class="btn ghost" data-act="unseen" data-id="' + esc(id) + '">Remettre à voir</button>' + rm;
     var gen = (it.g || []).join(', ');
     var tn = tonightLive(), prop = tn && tn.id === id && tn.st !== 'no' ? '<span class="st ok">' + (tn.st === 'ok' ? 'Prévu ce soir' : 'Proposé ce soir') + '</span>' : '<button class="btn ghost" style="height:44px" data-act="tonight" data-id="' + esc(id) + '">Proposer ce soir à ' + esc(pname(me === 'M' ? 'E' : 'M')) + '</button>';
-    where += prop;
+    where += cpSection(e, id) + prop;
     return hero + '<div class="group" style="gap:6px;margin-top:-6px"><h1>' + esc(it.t) + '</h1><span class="meta">' + meta(it) + (gen ? ' · ' + esc(gen) : '') + '</span></div>' +
       (d && d.ov ? '<p class="syn">' + esc(d.ov) + '</p>' : (d ? '' : '<div class="skel" style="height:72px"></div>')) +
       '<div class="group"><div class="sec"><h2>Où le voir</h2><span class="help">Source : TMDB / JustWatch</span></div>' + where + '</div>' + prog + epGuide(id, d, e) + rates + wg + colg + note + '<div class="dock"><button class="icon" style="width:52px;height:52px;border-radius:26px" data-act="back" aria-label="Retour">' + I('back') + '</button>' + dock + '</div>';
@@ -1109,6 +1131,15 @@
       '<p class="cred">Films, séries, affiches et bandes-annonces : TMDB. Ce produit utilise l’API TMDB mais n’est ni approuvé ni certifié par TMDB. Informations « où regarder » : JustWatch, via TMDB.</p>';
   }
 
+  function cpSettings() {
+    var rows = cplats().map(function (c) {
+      var n = S.list.filter(function (e) { return (e.cp || []).some(function (x) { return x.id === c.id; }); }).length;
+      return '<div class="card cust"><span style="display:flex;align-items:center">' + I('edit') + '</span><span class="ct"><b>' + esc(c.name) + '</b><span>' + n + ' titre' + (n > 1 ? 's' : '') + '</span></span><button class="link" style="min-height:44px" data-act="cpdel" data-c="' + esc(c.id) + '" aria-label="Supprimer ' + esc(c.name) + '">Supprimer</button></div>';
+    }).join('');
+    return '<div class="group"><h2>Plateformes ajoutées à la main</h2>' + rows +
+      '<div style="display:flex;gap:8px"><label for="newcp" style="position:absolute;left:-9999px">Nouvelle plateforme</label><input id="newcp" class="fld" maxlength="30" placeholder="Auvio, TF1+…" autocomplete="off"><button class="btn ghost" style="flex:none;width:auto;height:48px" data-act="cpnew">Ajouter</button></div>' +
+      '<span class="help">Pour les plateformes absentes de TMDB. Vous indiquez vous-même, sur chaque fiche, où se trouve le titre : ces infos s’affichent en pointillés avec un crayon car elles ne se mettent pas à jour automatiquement.</span></div>';
+  }
   function setPlats() {
     var fams = selFams();
     var region = '<select id="region" class="fld" aria-label="Pays">' + REGIONS.map(function (r) { return '<option value="' + r[0] + '"' + (S.settings.region === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; }).join('') + '</select>';
@@ -1119,6 +1150,7 @@
     var nAll = famsOf(PVL.map(function (p) { return p.id; })).length;
     return subHeader('Plateformes') +
       '<div class="group"><div class="sec"><h2>Mes plateformes</h2><span class="st ' + (fams.length ? 'ok' : 'no') + '">' + fams.length + ' choisie' + (fams.length > 1 ? 's' : '') + '</span></div>' + sel + '</div>' +
+      cpSettings() +
       '<div class="group"><h2>Pays</h2>' + region + '<span class="help">Les plateformes proposées et les disponibilités dépendent du pays. Changer de pays remet la liste à zéro.</span></div>' +
       '<div class="group"><div class="sec"><h2>Toutes les plateformes · ' + esc(region0) + '</h2><span class="help">' + nAll + ' disponible' + (nAll > 1 ? 's' : '') + '</span></div>' +
       '<label for="pvq" style="position:absolute;left:-9999px">Chercher une plateforme</label><input id="pvq" class="fsearch" type="search" autocomplete="off" placeholder="Chercher (Netflix, Max, Canal+…)" value="' + esc(ui.pvq) + '">' +
@@ -1826,6 +1858,30 @@
       var inp = document.getElementById('newcol'), name = inp ? inp.value.trim() : ''; if (!name) { toast('Donnez un nom à la liste.'); return; }
       if (S.collections.some(function (x) { return x.name.toLowerCase() === name.toLowerCase(); })) { toast('Cette liste existe déjà.'); return; }
       S.collections.push({ id: 'c' + Date.now().toString(36), name: name }); save(); render(true);
+    },
+    cpnew: function () {
+      var inp = document.getElementById('newcp'), name = inp ? inp.value.trim() : ''; if (!name) { toast('Donnez un nom à la plateforme.'); return; }
+      var l = cplats(); if (l.some(function (x) { return x.name.toLowerCase() === name.toLowerCase(); })) { toast('Cette plateforme existe déjà.'); return; }
+      S.settings.cplats = l.concat([{ id: 'p' + Date.now().toString(36), name: name }]); save(); render(true);
+    },
+    cpdel: function (d) {
+      var c = cplats().filter(function (x) { return x.id === d.c; })[0]; if (!c) return;
+      var idx = cplats().indexOf(c), had = [];
+      S.settings.cplats = cplats().filter(function (x) { return x.id !== c.id; });
+      S.list.forEach(function (e) { var m = (e.cp || []).filter(function (x) { return x.id === c.id; })[0]; if (m) { had.push([e.id, m]); e.cp = e.cp.filter(function (x) { return x.id !== c.id; }); if (!e.cp.length) delete e.cp; } });
+      save(); render(true);
+      toast('« ' + c.name + ' » supprimée', 'Annuler', function () {
+        var l = cplats().slice(); l.splice(idx, 0, c); S.settings.cplats = l;
+        had.forEach(function (h) { var e = entry(h[0]); if (e) { e.cp = (e.cp || []).concat([h[1]]); } });
+        save(); render(true);
+      });
+    },
+    cptog: function (d) {
+      var e = entry(d.id); if (!e || !cplatName(d.c)) return;
+      var cur = e.cp || [], has = cur.some(function (x) { return x.id === d.c; });
+      e.cp = has ? cur.filter(function (x) { return x.id !== d.c; }) : cur.concat([{ id: d.c, at: todayISO() }]);
+      if (!e.cp.length) delete e.cp;
+      save(); render(true);
     },
     coldel: function (d) {
       var c = S.collections.filter(function (x) { return x.id === d.c; })[0]; if (!c) return;
