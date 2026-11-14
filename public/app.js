@@ -807,7 +807,7 @@
     where += prop;
     return hero + '<div class="group" style="gap:6px;margin-top:-6px"><h1>' + esc(it.t) + '</h1><span class="meta">' + meta(it) + (gen ? ' · ' + esc(gen) : '') + '</span></div>' +
       (d && d.ov ? '<p class="syn">' + esc(d.ov) + '</p>' : (d ? '' : '<div class="skel" style="height:72px"></div>')) +
-      '<div class="group"><div class="sec"><h2>Où le voir</h2><span class="help">Source : TMDB / JustWatch</span></div>' + where + '</div>' + prog + epGuide(id, d, e) + rates + wg + colg + note + '<div class="dock">' + dock + '</div>';
+      '<div class="group"><div class="sec"><h2>Où le voir</h2><span class="help">Source : TMDB / JustWatch</span></div>' + where + '</div>' + prog + epGuide(id, d, e) + rates + wg + colg + note + '<div class="dock"><button class="icon" style="width:52px;height:52px;border-radius:26px" data-act="back" aria-label="Retour">' + I('back') + '</button>' + dock + '</div>';
   };
 
   // Guide des épisodes d'une série : une saison à la fois, avec les épisodes déjà vus cochés.
