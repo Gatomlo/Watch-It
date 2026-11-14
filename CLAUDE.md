@@ -42,3 +42,5 @@ Nom affiché : **Watch-It**. Les identifiants techniques gardent volontairement 
 - Pas de tests automatisés ; vérifier au minimum `node --check` sur chaque fichier modifié.
 - Ne jamais versionner `.env`, `data/` (base et `keys.json`). Ne jamais mettre de clé API dans le dépôt ni dans le navigateur.
 - Git : https://github.com/Gatomlo/Watch-It (public).
+
+- Connexion centralisée (node-gateway) : `src/gateway-bridge.js` (copie de `node-gateway/docs/gateway-bridge.js`) + `src/gatewayLogin.js` (monté dans `src/server.js` juste après `express-session`). Si la passerelle fournit `req.gateway` (droit sur cet outil), ouvre une session pour le compte local **de même identifiant** (aucun compte créé). Cette session ne vaut que tant que la passerelle se porte garante du même compte (contrôle à chaque requête, 2 h) ; une connexion locale normale n'est jamais touchée. Hors passerelle : sans effet. Test : `test/gateway-bridge.test.js` (`npm test`).
