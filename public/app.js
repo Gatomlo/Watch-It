@@ -77,7 +77,7 @@
   try { var pv0 = JSON.parse(localStorage.getItem('maiwatch-pv') || 'null'); if (pv0) { pv0.forEach(function (p) { PV[p.id] = p; }); PVL = pv0; } } catch (e) {}
 
   var ui = {
-    screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], genres: [], fq: '', fexp: false, sheet: null,
+    screen: 'home', hist: [], detail: null, dd: null, type: 'all', plats: [], cpf: [], genres: [], fq: '', fexp: false, sheet: null,
     tab: 'me', sug: {}, sugOff: {}, mi: {}, sugVer: 0, epOpen: false, epSeason: null, epData: {}, epExp: {}, epErr: {}, q: '', sr: null, srBusy: false, envie: '', env: null, envBusy: false,
     impText: '', impRows: null, impMode: 'paste', impBusy: false, pvq: '', aiMsg: '', aiBusy: false, pwMsg: '', loginError: '', setup: false, tmdbMsg: '', tmdbBusy: false,
     sset: 'menu', accMsg: '', aiDraftModel: null, aiModels: null, keyEdit: {}, keyConfirm: null, soon: null, cs: 'envie', cols: [], who: 'all', lk: {}, lq: '', castBusy: false, colOpen: null, colq: '', noteEdit: null, noteDraft: null, drawWho: 'both', matchTy: 'all', matchSrc: 'mix', saMode: null, saMsg: '', saBusy: false, tb: { mode: 'none', min: 0, start: '', end: '' }, nf: null, impHints: null, matchBusy: false, lbUser: '', trUser: '', trakt: { hasKey: false, last4: null }, push: { st: 'unknown', endpoint: null, msg: '' }
@@ -415,7 +415,11 @@
   function colName(id) { for (var i = 0; i < S.collections.length; i++) if (S.collections[i].id === id) return S.collections[i].name; return ''; }
   function passes(it, skip) {
     if (skip !== 'type' && ui.type !== 'all' && it.ty !== ui.type) return false;
-    if (skip !== 'plat' && ui.plats.length) { var a = AV[it.id]; if (!a || !a.f.some(function (p) { return ui.plats.indexOf(p) >= 0; })) return false; }
+    if (skip !== 'plat' && (ui.plats.length || ui.cpf.length)) { // plateformes TMDB ou saisies à la main : l'une OU l'autre
+      var a = AV[it.id], okT = ui.plats.length && a && a.f.some(function (p) { return ui.plats.indexOf(p) >= 0; });
+      var okC = ui.cpf.length && cpOf(entry(it.id)).some(function (c) { return ui.cpf.indexOf(c.id) >= 0; });
+      if (!okT && !okC) return false;
+    }
     if (skip !== 'genre' && ui.genres.length && !(it.g || []).some(function (g) { return ui.genres.indexOf(g) >= 0; })) return false;
     if (skip !== 'col' && ui.cols.length) { var en = entry(it.id); if (!en || !(en.l || []).some(function (l) { return ui.cols.indexOf(l) >= 0; })) return false; }
     if (ui.lq && ui.screen !== 'sug') { var eq = entry(it.id) || it; if (!textOk(eq)) return false; }
@@ -452,7 +456,7 @@
     var st = scr === 'seen' ? 'seen' : 'todo';
     return S.list.filter(function (e) { return e.status === st; });
   }
-  function nFilters() { return famsOf(ui.plats).length + ui.genres.length + ui.cols.length + (ui.who !== 'all' ? 1 : 0); }
+  function nFilters() { return famsOf(ui.plats).length + ui.cpf.length + ui.genres.length + ui.cols.length + (ui.who !== 'all' ? 1 : 0); }
 
   // ===================== Pièces d'interface =====================
   function poster(it, cls) {
@@ -573,6 +577,7 @@
   function filterBar(extra) {
     var toks = [];
     famsOf(ui.plats).forEach(function (f) { toks.push({ k: 'plat', v: f.ids.join(','), l: f.name }); });
+    ui.cpf.forEach(function (c) { if (cplatName(c)) toks.push({ k: 'cplat', v: c, l: cplatName(c) }); });
     ui.genres.forEach(function (g) { toks.push({ k: 'genre', v: g, l: g }); });
     ui.cols.forEach(function (c) { toks.push({ k: 'col', v: c, l: colName(c) || 'Liste' }); });
     if (ui.who !== 'all' && ui.screen !== 'sug' && ui.screen !== 'seen') toks.push({ k: 'who', v: 'all', l: 'Veut le voir : ' + whoLabel(ui.who) });
@@ -602,6 +607,9 @@
     var pc = {};
     cs.filter(function (c) { return passes(c, 'plat'); }).forEach(function (c) { var a = AV[c.id]; if (a) a.f.forEach(function (k) { pc[k] = (pc[k] || 0) + 1; }); });
     var plats = selFams().map(function (f) { var n = 0; cs.filter(function (c) { return passes(c, 'plat'); }).forEach(function (c) { var a = AV[c.id]; if (a && a.f.some(function (x) { return f.ids.indexOf(x) >= 0; })) n++; }); return crow('plat', f.ids.join(','), f.name, n, f.ids.some(function (x) { return ui.plats.indexOf(x) >= 0; }), logoOf(f.first)); }).join('');
+    if (ui.sheet.scr !== 'sug' && cplats().length) {
+      plats += cplats().map(function (c) { var n = cs.filter(function (x) { return passes(x, 'plat'); }).filter(function (x) { return cpOf(entry(x.id)).some(function (m) { return m.id === c.id; }); }).length; return crow('cplat', c.id, c.name, n, ui.cpf.indexOf(c.id) >= 0, I('edit')); }).join('');
+    }
     var colGroup = '';
     if (ui.sheet.scr !== 'sug' && S.collections.length) {
       var cc = {};
@@ -1512,7 +1520,7 @@
   }
 
   var A = {
-    go: function (d) { ui.plats = []; ui.genres = []; ui.cols = []; ui.who = 'all'; ui.lq = ''; go(d.to, false); },
+    go: function (d) { ui.plats = []; ui.cpf = []; ui.genres = []; ui.cols = []; ui.who = 'all'; ui.lq = ''; go(d.to, false); },
     push: function (d) { go(d.to, true); },
     sset: function (d) { ui.keyEdit = {}; ui.keyConfirm = null; ui.sset = d.v; if (d.v === 'plats') { loadProviders(); ui.pvq = ''; } if (d.v === 'notif') refreshPush(); render(); },
     back: function () { if (ui.screen === 'settings' && ui.sset !== 'menu') { ui.sset = 'menu'; ui.keyEdit = {}; ui.keyConfirm = null; render(); return; } var h = ui.hist.pop(); if (h) { ui.screen = h.screen; ui.detail = h.detail; ui.sheet = null; render(true); } else go('home'); },
@@ -1547,11 +1555,12 @@
       else if (k === 'who') ui.who = v;
       else if (k === 'mp') { var mids = String(v).split(',').map(Number), mname = famsOf(mids)[0].name, added = toggleIds(S.settings.platforms, mids); save(); detectChanges(); toast(mname + (added ? ' ajoutée à vos plateformes' : ' retirée de vos plateformes') + ' (' + selFams().length + ' au total)'); }
       else if (k === 'plat') { toggleIds(ui.plats, String(v).split(',').map(Number)); }
+      else if (k === 'cplat') { var cj = ui.cpf.indexOf(v); if (cj >= 0) ui.cpf.splice(cj, 1); else ui.cpf.push(v); }
       else { var arr = k === 'col' ? ui.cols : ui.genres, j = arr.indexOf(v); if (j >= 0) arr.splice(j, 1); else arr.push(v); }
       render(true);
     },
     openfilter: function () { ui.sheet = { type: 'filter', scr: ui.screen }; ui.fq = ''; ui.fexp = false; render(true); },
-    resetf: function () { ui.plats = []; ui.genres = []; ui.cols = []; ui.who = 'all'; ui.lq = ''; ui.sugOff = {}; render(true); },
+    resetf: function () { ui.plats = []; ui.cpf = []; ui.genres = []; ui.cols = []; ui.who = 'all'; ui.lq = ''; ui.sugOff = {}; render(true); },
     fexp: function () { ui.fexp = !ui.fexp; render(true); },
     closesheet: function () { ui.sheet = null; render(true); },
     tab: function (d) { ui.tab = d.v; render(true); },
@@ -1644,7 +1653,7 @@
       if (dirty) { toast('Des modifications ne sont pas encore envoyées : attendez le retour du réseau.'); return; }
       apiFetch('/api/logout', { method: 'POST' }).finally(function () {
         isAuthenticated = false; S = null; baseState = null; baseVersion = null; try { localStorage.removeItem(STORE_KEY); } catch (e) {}
-        ui.screen = 'home'; ui.hist = []; ui.detail = null; ui.sug = {}; ui.env = null; ui.sr = null; ui.q = ''; ui.plats = []; ui.genres = []; ui.cols = []; ui.who = 'all'; ui.type = 'all'; ui.sheet = null; render();
+        ui.screen = 'home'; ui.hist = []; ui.detail = null; ui.sug = {}; ui.env = null; ui.sr = null; ui.q = ''; ui.plats = []; ui.cpf = []; ui.genres = []; ui.cols = []; ui.who = 'all'; ui.type = 'all'; ui.sheet = null; render();
       });
     },
     tmdbsave: function () {
