@@ -47,17 +47,27 @@ app.use(express.json({ limit: "2mb" }));
 const REMEMBER_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
 const SESSION_MAX_AGE = 12 * 60 * 60 * 1000;
 
-app.use(
-  session({
+// Cookie de session limite au chemin de montage (/watch-it/ sous la passerelle, / seul) : il n'est plus envoye aux autres
+// outils de la passerelle. Le chemin n'est connu qu'a la premiere requete : un middleware de session par chemin.
+const sessionByMount = new Map();
+function sessionFor(req) {
+  const mount = req.app && typeof req.app.mountpath === "string" && req.app.mountpath !== "/" ? req.app.mountpath : "";
+  if (!sessionByMount.has(mount)) {
+    const cookiePath = mount + "/";
+    sessionByMount.set(mount, session({
     store: new SqliteSessionStore(),
     secret: sessionSecret,
     name: "maiwatch_sid",
     resave: false,
     saveUninitialized: false,
     rolling: true,
-    cookie: { httpOnly: true, sameSite: "lax", secure: process.env.COOKIE_SECURE === "true" ? true : process.env.COOKIE_SECURE === "false" ? false : "auto", maxAge: SESSION_MAX_AGE },
-  })
-);
+    cookie: {
+      path: cookiePath, httpOnly: true, sameSite: "lax", secure: process.env.COOKIE_SECURE === "true" ? true : process.env.COOKIE_SECURE === "false" ? false : "auto", maxAge: SESSION_MAX_AGE },
+  }));
+  }
+  return sessionByMount.get(mount);
+}
+app.use((req, res, next) => sessionFor(req)(req, res, next));
 
 // Connexion centralisee de node-gateway (voir gatewayLogin.js) : sans effet hors passerelle.
 app.use(require("./gatewayLogin"));
