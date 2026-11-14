@@ -47,6 +47,7 @@
     trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>', share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/>',
     dl: '<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>', ul: '<path d="M12 15V3M7 8l5-5 5 5M4 20h16"/>', chev: '<path d="M9 5l7 7-7 7"/>',
     file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5"/>', out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+    tv: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
     star: '<path d="M12 2.8l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.7 6.1 21l1.2-6.6L2.5 9.8l6.6-.9z"/>',
     filter: '<path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h11M21 18h-1"/><circle cx="16" cy="6" r="2.2"/><circle cx="10" cy="12" r="2.2"/><circle cx="17.5" cy="18" r="2.2"/>'
   };
@@ -480,7 +481,7 @@
     var soon = !!(it.d && it.d > todayISO());
     if (soon) return '<div class="badges">' + h + '</div>';
     if (!a) h += '<span class="badge mut">Plateformes…</span>';
-    else if (!mine.length) h += a.f.length ? '<span class="badge mut">Sur d’autres plateformes</span>' : (a.r.length || a.b.length ? '<span class="badge warn" title="Location ou achat" aria-label="Location ou achat">€</span>' : '<span class="badge warn">Pas en streaming</span>');
+    else if (!mine.length) h += a.f.length ? '<span class="badge mut" title="Sur d’autres plateformes" aria-label="Sur d’autres plateformes">' + I('tv') + '</span>' : (a.r.length || a.b.length ? '<span class="badge warn" title="Location ou achat" aria-label="Location ou achat">€</span>' : '<span class="badge warn">Pas en streaming</span>');
     if (a) h += a.trailer ? '<span class="badge soft tr" title="Bande-annonce disponible">' + I('play') + '<span class="tn">Bande-annonce</span></span>' : '<span class="badge mut tr" title="Pas de bande-annonce">' + I('play') + '<span class="tn">Sans bande-annonce</span></span>';
     return '<div class="badges">' + h + '</div>';
   }
