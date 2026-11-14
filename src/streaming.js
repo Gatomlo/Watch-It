@@ -83,6 +83,7 @@ function norm(s) { return String(s || "").toLowerCase().normalize("NFD").replace
 function brandOf(name) {
   const n = norm(name);
   if (/netflix/.test(n)) return "netflix";
+  if (/\bvrt\b/.test(n)) return "vrt";
   if (/\bhbo\b|\bmax\b/.test(n)) return "max";
   if (/prime video|amazon prime/.test(n)) return "prime";
   if (/disney/.test(n)) return "disney";

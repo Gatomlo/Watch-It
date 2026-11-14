@@ -277,6 +277,7 @@
   function brandOf(name) {
     var n = norm(name || '');
     if (/netflix/.test(n)) return 'netflix';
+    if (/\bvrt\b/.test(n)) return 'vrt';
     if (/\bhbo\b|\bmax\b/.test(n)) return 'max';
     if (/prime video|amazon prime/.test(n)) return 'prime';
     if (/disney/.test(n)) return 'disney';
@@ -318,7 +319,12 @@
     api('/api/title/' + encodeURIComponent(id) + '/links').then(function (l) { ui.lk[id] = l; }).catch(function () { ui.lk[id] = 'err'; }).finally(function () { if (ui.detail === id && ui.screen === 'detail') safeRender(); });
   }
   function logoOf(id) { var p = PV[id]; return p && p.logo ? '<img class="pl" src="' + IMG + 'w45' + esc(p.logo) + '" alt="" loading="lazy">' : '<span class="dot" style="background:var(--muted)"></span>'; }
-  function pnameOf(id) { return PV[id] ? PV[id].name : 'Plateforme ' + id; }
+  // Identifiant inconnu (liste de plateformes ancienne) : on la recharge une fois.
+  var pvMissTried = false;
+  function pnameOf(id) {
+    if (!PV[id] && !pvMissTried && S && isAuthenticated) { pvMissTried = true; loadProviders(true).then(function () { safeRender(); }); }
+    return PV[id] ? PV[id].name : 'Plateforme ' + id;
+  }
   function loadProviders(force) {
     if (!force && PVL.length) { expandSelected(); return Promise.resolve(); }
     return api('/api/providers?region=' + encodeURIComponent(S.settings.region)).then(function (list) {
@@ -1371,6 +1377,8 @@
     api('/api/title/' + encodeURIComponent(id)).then(function (d) {
       if (ui.detail !== id) return;
       ui.dd = d; know(lite(d)); loadLinks(id);
+      // La fiche a la disponibilité la plus fraîche (TMDB + Streaming Availability) : on aligne la liste dessus.
+      if (d.av) { AV[id] = Object.assign({}, AV[id], { f: d.av.f, r: d.av.r, b: d.av.b, trailer: !!d.trailer }); try { localStorage.setItem('maiwatch-av', JSON.stringify({ at: AV_AT, map: AV })); } catch (e) {} }
       var e = entry(id);
       if (e) { // complète la fiche gardée dans la liste (durée, genres…) sans bruit
         var ch = false;
