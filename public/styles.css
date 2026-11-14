@@ -264,7 +264,9 @@ button.play{border:0;padding:0;cursor:pointer}
 /* --- Qui veut le voir --- */
 .avs{display:inline-flex;gap:3px;flex:none}
 .rowx{display:flex;flex-direction:column;gap:6px}
-.rowx .want{align-self:flex-start;margin-left:82px;height:36px;padding:0 14px;font-size:13px}
+.ava.ghost{position:relative;background:transparent;border:1.5px dashed var(--muted);color:var(--muted);cursor:pointer;box-sizing:border-box}
+.ava.ghost::before{content:'';position:absolute;inset:-10px}
+.ava.ghost:hover,.ava.ghost:focus-visible{border-style:solid;color:var(--fg)}
 
 /* --- Carte plateforme cliquable (lien direct) --- */
 a.card{text-decoration:none;color:inherit}

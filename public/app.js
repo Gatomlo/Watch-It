@@ -523,11 +523,18 @@
     if (!rest.length) return '<span class="help">' + (q ? 'Aucune liste ne correspond à « ' + esc(ui.colq) + ' ».' : 'Toutes les listes sont déjà cochées.') + '</span>';
     return rest.map(function (c) { return '<button class="mi" data-act="coltog" data-id="' + esc(id) + '" data-c="' + esc(c.id) + '"><span class="ct"><b>' + esc(c.name) + '</b></span></button>'; }).join('');
   }
-  function avas(e) { return '<span class="avs">' + ['M', 'E'].filter(function (u) { return wants(e, u); }).map(function (u) { return '<span class="ava ' + u + '" aria-label="' + esc(pname(u)) + ' veut le voir">' + esc(initial(u)) + '</span>'; }).join('') + '</span>'; }
+  // Pastilles « qui veut le voir ». Avec `ghost`, la pastille de l'appareil (pas encore intéressé) est grisée et
+  // cliquable : toucher = « Moi aussi » (elle prend alors sa couleur).
+  function avas(e, ghost) {
+    return '<span class="avs">' + ['M', 'E'].map(function (u) {
+      if (wants(e, u)) return '<span class="ava ' + u + '" aria-label="' + esc(pname(u)) + ' veut le voir">' + esc(initial(u)) + '</span>';
+      if (ghost && u === me) return '<span class="ava ghost" role="button" data-act="want" data-id="' + esc(e.id) + '" data-u="' + u + '" title="Moi aussi" aria-label="Moi aussi : ' + esc(pname(u)) + ' veut aussi le voir">' + esc(initial(u)) + '</span>';
+      return '';
+    }).join('') + '</span>';
+  }
   function rowHtml(it, e) {
-    var b = '<button class="row" data-act="open" data-id="' + esc(it.id) + '">' + poster(it) + '<span class="rb"><span class="rt"><span class="title">' + esc(it.t) + '</span>' + (e ? avas(e) : '') + '</span><span class="meta">' + meta(it) + '</span>' + badges(it) + '</span></button>';
-    if (e && e.status === 'todo' && !wants(e, me)) return '<div class="rowx">' + b + '<button class="chip want" data-act="want" data-id="' + esc(it.id) + '" data-u="' + me + '">+ Moi aussi</button></div>';
-    return b;
+    var ghost = !!(e && e.status === 'todo' && !wants(e, me));
+    return '<button class="row" data-act="open" data-id="' + esc(it.id) + '">' + poster(it) + '<span class="rb"><span class="rt"><span class="title">' + esc(it.t) + '</span>' + (e ? avas(e, ghost) : '') + '</span><span class="meta">' + meta(it) + '</span>' + badges(it) + '</span></button>';
   }
   function back() { return '<button class="icon" data-act="back" aria-label="Retour">' + I('back') + '</button>'; }
   function nav() {
