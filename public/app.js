@@ -608,7 +608,7 @@
     cs.filter(function (c) { return passes(c, 'plat'); }).forEach(function (c) { var a = AV[c.id]; if (a) a.f.forEach(function (k) { pc[k] = (pc[k] || 0) + 1; }); });
     var plats = selFams().map(function (f) { var n = 0; cs.filter(function (c) { return passes(c, 'plat'); }).forEach(function (c) { var a = AV[c.id]; if (a && a.f.some(function (x) { return f.ids.indexOf(x) >= 0; })) n++; }); return crow('plat', f.ids.join(','), f.name, n, f.ids.some(function (x) { return ui.plats.indexOf(x) >= 0; }), logoOf(f.first)); }).join('');
     if (ui.sheet.scr !== 'sug' && cplats().length) {
-      plats += cplats().map(function (c) { var n = cs.filter(function (x) { return passes(x, 'plat'); }).filter(function (x) { return cpOf(entry(x.id)).some(function (m) { return m.id === c.id; }); }).length; return crow('cplat', c.id, c.name, n, ui.cpf.indexOf(c.id) >= 0, I('edit')); }).join('');
+      plats += cplats().map(function (c) { var n = cs.filter(function (x) { return passes(x, 'plat'); }).filter(function (x) { return cpOf(entry(x.id)).some(function (m) { return m.id === c.id; }); }).length; return crow('cplat', c.id, c.name, n, ui.cpf.indexOf(c.id) >= 0, logoOf(0)); }).join('');
     }
     var colGroup = '';
     if (ui.sheet.scr !== 'sug' && S.collections.length) {
