@@ -473,7 +473,7 @@
     var a = av || AV[it.id], mine = a ? a.f.filter(function (p) { return platsOn().indexOf(p) >= 0; }) : [], h = '';
     mine.forEach(function (p) { h += platBadge(p); });
     var e = entry(it.id);
-    if (e && e.alert && daysSince(e.alert.at) <= 21 && e.status === 'todo') {
+    if (e && e.alert && daysSince(e.alert.at) <= (e.alert.k === 'new' ? 7 : 21) && e.status === 'todo') {
       h += e.alert.k === 'gone' ? '<span class="badge warn">N’est plus sur ' + esc(pnameOf(e.alert.p)) + '</span>' : '<span class="badge ok">Nouveau sur ' + esc(pnameOf(e.alert.p)) + '</span>';
     }
     if (e && e.l && e.l.length) e.l.slice(0, 2).forEach(function (l) { var nm = colName(l); if (nm) h += '<span class="badge soft">' + esc(nm) + '</span>'; });
