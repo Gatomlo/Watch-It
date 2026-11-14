@@ -366,17 +366,22 @@
   function avail(it) { var a = AV[it.id]; return a ? a.f.filter(function (p) { return platsOn().indexOf(p) >= 0; }) : []; }
   function availKnown(it) { return !!AV[it.id]; }
 
-  function refreshAvail() {
+  function refreshAvail(fresh) {
     if (!isAuthenticated || !S) return Promise.resolve();
     var ids = S.list.filter(function (e) { return e.status === 'todo'; }).map(function (e) { return e.id; });
     if (!ids.length) { AV_AT = Date.now(); return Promise.resolve(); }
-    return api('/api/availability', { method: 'POST', body: { ids: ids } }).then(function (map) {
-      Object.keys(map).forEach(function (k) { AV[k] = map[k]; });
+    // Actualisation forcée : lots de 40, le serveur contourne alors son cache TMDB.
+    var chunks = [];
+    if (fresh) { for (var i = 0; i < ids.length; i += 40) chunks.push(ids.slice(i, i + 40)); } else chunks.push(ids);
+    return chunks.reduce(function (p, ch) {
+      return p.then(function () { return api('/api/availability', { method: 'POST', body: { ids: ch, fresh: !!fresh } }); })
+        .then(function (map) { Object.keys(map).forEach(function (k) { AV[k] = map[k]; }); });
+    }, Promise.resolve()).then(function () {
       AV_AT = Date.now();
       try { localStorage.setItem('maiwatch-av', JSON.stringify({ at: AV_AT, map: AV })); } catch (e) {}
       detectChanges();
       safeRender();
-    }).catch(function () {});
+    }).catch(function (e) { if (fresh) throw e; });
   }
   function maybeRefreshAvail() { if (Date.now() - AV_AT > 6 * 3600 * 1000) refreshAvail(); }
 
@@ -1084,7 +1089,8 @@
       '<div class="group"><h2>Notre foyer</h2><div class="menu">' + mrow('plats', 'play', 'Plateformes de streaming', plSub) + mrow('profils', 'checkc', 'Profils', esc(pname('M') + ' · ' + pname('E'))) + mrow('lists', 'list', 'Listes thématiques', S.collections.length + ' liste' + (S.collections.length > 1 ? 's' : '')) + '</div></div>' +
       '<div class="group"><h2>Services</h2><div class="menu">' + mrow('tmdb', 'search', 'Films et séries (TMDB)', tmSub) + mrow('share', 'share', 'Partage des fiches', shSub) + mrow('ai', 'spark', 'Assistant d’envies', aiSub) + mrow('notif', 'dice', 'Notifications', pSub) + '</div></div>' +
       '<div class="group"><h2>Données</h2><div class="menu"><button class="mi" data-act="push" data-to="import">' + I('dl').replace('class="ico "', 'class="ico" style="stroke:var(--accent)"') + '<span class="ct"><b>Importer nos films et séries vus</b><span>Liste, CSV, Letterboxd, Trakt, Netflix</span></span>' + I('chev') + '</button>' +
-      '<button class="mi" data-act="export">' + I('ul') + '<span class="ct"><b>Exporter la liste</b><span>Fichier CSV</span></span></button></div></div>' +
+      '<button class="mi" data-act="export">' + I('ul') + '<span class="ct"><b>Exporter la liste</b><span>Fichier CSV</span></span></button>' +
+      '<button class="mi" data-act="refreshcache"' + (ui.refBusy ? ' disabled' : '') + '>' + I('gear') + '<span class="ct"><b>Actualiser les fiches en cache</b><span>' + (ui.refBusy ? 'Actualisation en cours…' : 'Redemande à TMDB la disponibilité des titres à voir') + '</span></span></button></div></div>' +
       '<div class="group"><h2>Application</h2><div class="menu">' + mrow('install', 'dl', 'Installer l’application', isStandalone() ? 'Déjà installée' : (deferredInstall ? 'Disponible : touchez pour installer' : 'Mode d’emploi')) + mrow('theme', 'gear', 'Apparence', THEME === 'light' ? 'Clair' : (THEME === 'auto' ? 'Automatique' : 'Sombre')) + mrow('account', 'out', 'Compte', 'Identifiant, mot de passe, déconnexion') + '</div></div>' +
       '<p class="cred">Films, séries, affiches et bandes-annonces : TMDB. Ce produit utilise l’API TMDB mais n’est ni approuvé ni certifié par TMDB. Informations « où regarder » : JustWatch, via TMDB.</p>';
   }
@@ -1578,6 +1584,13 @@
         .finally(function () { ui.aiBusy = false; render(true); });
     },
     aiclear: function () { api('/api/ai', { method: 'DELETE' }).then(function (s) { CFG.ai = s; ui.aiMsg = 'Clé retirée.'; ui.keyConfirm = null; ui.keyEdit = {}; render(true); }).catch(function (e) { toast(e.message); }); },
+    refreshcache: function () {
+      if (ui.refBusy) return;
+      if (navigator.onLine === false) { toast('Hors ligne : l’actualisation a besoin du réseau.'); return; }
+      ui.refBusy = true; render(true);
+      refreshAvail(true).then(function () { toast('Fiches actualisées.'); }).catch(function () { toast('Actualisation impossible pour le moment.'); })
+        .finally(function () { ui.refBusy = false; render(true); });
+    },
     export: function () { exportCsv(); toast('Export prêt : ' + S.list.length + ' titres.'); },
     logout: function () {
       if (dirty) { toast('Des modifications ne sont pas encore envoyées : attendez le retour du réseau.'); return; }

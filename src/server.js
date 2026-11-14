@@ -266,7 +266,8 @@ app.post("/api/availability", requireAuth, wrap(async (req, res) => {
   const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids.filter((x) => tmdb.parseKey(x)).slice(0, 80) : [];
   const region = engine.region(db.getState());
   const out = {};
-  const list = await engine.pmap(ids, 6, (id) => tmdb.details(id, region));
+  const bust = !!(req.body && req.body.fresh);
+  const list = await engine.pmap(ids, 6, (id) => tmdb.details(id, region, bust ? { bust: true } : undefined));
   ids.forEach((id, i) => {
     const d = list[i];
     if (!d) return;
