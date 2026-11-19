@@ -541,12 +541,19 @@
   function wants(e, u) { return e.w ? !!e.w[u] : e.by === u; }
   // Titres ajoutés par l'autre profil, pas encore voulus ni refusés par moi.
   // « Vu » est personnel : si l'autre veut encore le voir, le titre reste dans son « À voir » (e.sn = qui l'a vu).
+  // Si les deux voulaient le voir : préciser si l'autre l'a vu aussi.
+  function seenWho(s) {
+    var e = entry(s.id), o = me === 'M' ? 'E' : 'M';
+    if (!e || e.status !== 'todo' || !wants(e, me) || !wants(e, o) || (e.sn && e.sn[o])) return '';
+    return '<div class="seg" role="group" aria-label="Vu par"><button class="chip' + (s.both ? '' : ' on') + '" data-act="seenwho" data-v="0" aria-pressed="' + !s.both + '">Vu par moi</button><button class="chip' + (s.both ? ' on' : '') + '" data-act="seenwho" data-v="1" aria-pressed="' + !!s.both + '">Vu par les deux</button></div>';
+  }
   function isSeen(e) { return e.status === 'seen' || !!(e.sn && e.sn[me]); }
   // Dans mon « À voir » : pas vu par moi, et pas un titre que l'autre a vu sans que je l'aie voulu.
   function isTodo(e) { var o = me === 'M' ? 'E' : 'M'; return e.status === 'todo' && !(e.sn && e.sn[me]) && !(e.sn && e.sn[o] && !wants(e, me)); }
-  function markSeen(e) {
+  function markSeen(e, both) {
     var o = me === 'M' ? 'E' : 'M';
     e.sn = Object.assign({}, e.sn, { [me]: true });
+    if (both) e.sn[o] = true;
     if (e.sn[o]) e.status = 'seen';
   }
   function markUnseen(e) {
@@ -1367,7 +1374,7 @@
     if (s.type === 'filter') return filterSheet();
     if (s.type === 'rate') {
       var it = entry(s.id) || KNOWN[s.id]; if (!it) return '';
-      return '<div class="scrim" data-scrim="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Noter"><h3>Votre note pour « ' + esc(it.t) + ' » ?</h3><span class="help" style="margin-top:-8px">Note de ' + esc(pname(me)) + ' : elle améliore les suggestions.</span>' + starRow(0, 'rate', 'data-id="' + esc(s.id) + '"', 'big') + '<button class="btn ghost" data-act="rate" data-id="' + esc(s.id) + '" data-v="0">Marquer vu sans noter</button></div></div>';
+      return '<div class="scrim" data-scrim="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Noter"><h3>Votre note pour « ' + esc(it.t) + ' » ?</h3><span class="help" style="margin-top:-8px">Note de ' + esc(pname(me)) + ' : elle améliore les suggestions.</span>' + seenWho(s) + starRow(0, 'rate', 'data-id="' + esc(s.id) + '"', 'big') + '<button class="btn ghost" data-act="rate" data-id="' + esc(s.id) + '" data-v="0">Marquer vu sans noter</button></div></div>';
     }
     if (s.type === 'trailer') {
       var tk = encodeURIComponent(s.key);
@@ -1615,11 +1622,12 @@
       if (!e) addEntry(it, 'seen'); else { markSeen(e); e.at = todayISO(); }
       save(); ui.sheet = { type: 'rate', id: d.id }; render(true);
     },
+    seenwho: function (d) { if (ui.sheet) { ui.sheet.both = d.v === '1'; render(true); } },
     askseen: function (d) { ui.sheet = { type: 'rate', id: d.id }; render(true); },
     setr: function (d) { var e = entry(d.id); if (!e) return; e.r[d.u] = e.r[d.u] === +d.v ? 0 : +d.v; save(); render(true); },
     rate: function (d) {
       var e = entry(d.id); if (!e) return;
-      markSeen(e); e.at = todayISO(); delete e.alert; if (+d.v) e.r[me] = +d.v; save(); ui.sheet = null; render(true);
+      markSeen(e, ui.sheet && ui.sheet.both); e.at = todayISO(); delete e.alert; if (+d.v) e.r[me] = +d.v; save(); ui.sheet = null; render(true);
       toast(+d.v ? 'Noté ' + d.v + ' ★ · vos suggestions s’affinent' : 'Marqué comme vu');
     },
     unseen: function (d) { var e = entry(d.id); markUnseen(e); save(); refreshAvail(); render(true); toast('Remis dans « À voir »'); },
