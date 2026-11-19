@@ -722,7 +722,9 @@
   function todoListHtml() {
     var todo = S.list.filter(function (e) { return e.status === 'todo'; }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
     var shown = todo.filter(function (e) { return passes(e); });
-    return castNote() + (shown.length ? '<div class="list">' + shown.map(function (e) { return rowHtml(e, e); }).join('') + '</div>' : emptyMsg(todo.length, 'Rien dans la liste pour l’instant.<br>Touchez + ou partagez un lien depuis Signal.'));
+    var q = (ui.lq || '').trim();
+    var offer = (!shown.length && norm(q).length >= 2 && !ui.castBusy) ? '<div class="notice"><b>« ' + esc(q) + ' » n’est pas dans la liste.</b><br><button class="btn" data-act="addq">' + I('search') + 'Chercher et ajouter</button></div>' : '';
+    return castNote() + offer + (shown.length ? '<div class="list">' + shown.map(function (e) { return rowHtml(e, e); }).join('') + '</div>' : emptyMsg(todo.length, 'Rien dans la liste pour l’instant.<br>Touchez + ou partagez un lien depuis Signal.'));
   }
   function seenListHtml() {
     var all = S.list.filter(function (e) { return e.status === 'seen'; }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
@@ -1522,6 +1524,12 @@
   var A = {
     go: function (d) { ui.plats = []; ui.cpf = []; ui.genres = []; ui.cols = []; ui.who = 'all'; ui.lq = ''; go(d.to, false); },
     push: function (d) { go(d.to, true); },
+    addq: function () {
+      var q = (ui.lq || '').trim().slice(0, 80);
+      ui.hist.push({ screen: ui.screen, detail: ui.detail });
+      ui.q = q; ui.sr = null; ui.screen = 'add'; ui.sheet = null; render();
+      if (norm(q).length >= 2) runSearch();
+    },
     sset: function (d) { ui.keyEdit = {}; ui.keyConfirm = null; ui.sset = d.v; if (d.v === 'plats') { loadProviders(); ui.pvq = ''; } if (d.v === 'notif') refreshPush(); render(); },
     back: function () { if (ui.screen === 'settings' && ui.sset !== 'menu') { ui.sset = 'menu'; ui.keyEdit = {}; ui.keyConfirm = null; render(); return; } var h = ui.hist.pop(); if (h) { ui.screen = h.screen; ui.detail = h.detail; ui.sheet = null; render(true); } else go('home'); },
     open: function (d) { openDetail(d.id); },
