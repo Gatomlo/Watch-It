@@ -111,7 +111,8 @@
     return o;
   }
   function addEntry(it, status) {
-    var e = Object.assign(lite(it), { by: me, at: todayISO(), status: status || 'todo', r: {}, note: '' });
+    var e = Object.assign(lite(it), { by: me, at: todayISO(), status: status === 'seen' ? 'todo' : (status || 'todo'), r: {}, note: '' });
+    if (status === 'seen') e.sn = { [me]: true };
     if (isTodo(e) && S.settings.addFor === 'both') e.w = { M: true, E: true }; // option : voulu par les deux dès l'ajout
     S.list.push(e);
     return e;
@@ -541,16 +542,17 @@
   // Titres ajoutés par l'autre profil, pas encore voulus ni refusés par moi.
   // « Vu » est personnel : si l'autre veut encore le voir, le titre reste dans son « À voir » (e.sn = qui l'a vu).
   function isSeen(e) { return e.status === 'seen' || !!(e.sn && e.sn[me]); }
-  function isTodo(e) { return e.status === 'todo' && !(e.sn && e.sn[me]); }
+  // Dans mon « À voir » : pas vu par moi, et pas un titre que l'autre a vu sans que je l'aie voulu.
+  function isTodo(e) { var o = me === 'M' ? 'E' : 'M'; return e.status === 'todo' && !(e.sn && e.sn[me]) && !(e.sn && e.sn[o] && !wants(e, me)); }
   function markSeen(e) {
     var o = me === 'M' ? 'E' : 'M';
-    if (e.status === 'todo' && wants(e, o) && !(e.sn && e.sn[o])) { e.sn = Object.assign({}, e.sn, { [me]: true }); return; }
-    e.status = 'seen';
+    e.sn = Object.assign({}, e.sn, { [me]: true });
+    if (e.sn[o]) e.status = 'seen';
   }
   function markUnseen(e) {
-    var o = me === 'M' ? 'E' : 'M';
-    if (e.status === 'seen') { e.status = 'todo'; e.sn = (e.r && e.r[o] > 0) ? { [o]: true } : {}; }
-    else if (e.sn) { var n = Object.assign({}, e.sn); delete n[me]; e.sn = n; }
+    var o = me === 'M' ? 'E' : 'M', n = Object.assign({}, e.sn);
+    if (e.status === 'seen') { e.status = 'todo'; if (!n[o] && !n[me] && e.r && e.r[o] > 0) n[o] = true; }
+    delete n[me]; e.sn = n;
   }
   function pending() {
     var o = me === 'M' ? 'E' : 'M';
