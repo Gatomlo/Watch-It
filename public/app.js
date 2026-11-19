@@ -723,7 +723,7 @@
     var todo = S.list.filter(function (e) { return e.status === 'todo'; }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
     var shown = todo.filter(function (e) { return passes(e); });
     var q = (ui.lq || '').trim();
-    var offer = (!shown.length && norm(q).length >= 2 && !ui.castBusy) ? '<div class="notice"><b>« ' + esc(q) + ' » n’est pas dans la liste.</b><br><button class="btn" data-act="addq">' + I('search') + 'Chercher et ajouter</button></div>' : '';
+    var offer = (!shown.length && norm(q).length >= 2 && !ui.castBusy) ? '<div class="notice addq"><b>« ' + esc(q) + ' » n’est pas dans la liste.</b><button class="btn" data-act="addq">' + I('search') + 'Chercher et ajouter</button></div>' : '';
     return castNote() + offer + (shown.length ? '<div class="list">' + shown.map(function (e) { return rowHtml(e, e); }).join('') + '</div>' : emptyMsg(todo.length, 'Rien dans la liste pour l’instant.<br>Touchez + ou partagez un lien depuis Signal.'));
   }
   function seenListHtml() {

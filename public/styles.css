@@ -291,3 +291,6 @@ a.card .ico{flex:none;opacity:.6}
 /* --- Recherche dans la liste --- */
 .sbox{display:flex}
 .sbox .fsearch{width:100%}
+.notice.addq{display:flex;flex-direction:column;gap:12px;margin:14px 0}
+.notice.addq .btn{display:flex;align-items:center;justify-content:center;gap:8px}
+.notice.addq .btn svg{width:20px;height:20px;flex:none}
