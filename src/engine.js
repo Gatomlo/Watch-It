@@ -35,10 +35,12 @@ function rating(state, r) {
 }
 
 // Ce qui compte pour un profil : aimé +3, pas aimé −3, dans la liste +1 (ajouté par lui) ou +0,4, refusé −2.
+// « Vu » est personnel : e.status "seen" = vu par les deux, e.sn[profil] = vu par ce profil seulement.
+function seenBy(e, u) { return e.status === "seen" || !!(e.sn && e.sn[u]); }
 function sourcesOf(state, user) {
   const src = [];
   state.list.forEach((e) => {
-    if (e.status === "seen") {
+    if (seenBy(e, user)) {
       const v = rating(state, e.r && e.r[user]);
       if (v > 0) src.push({ e, w: v, l: "aimé" });
       else if (v < 0) src.push({ e, w: v, l: "pas aimé" });
@@ -257,10 +259,10 @@ async function envies(state, text, me, minutes) {
 
   const dismissed = new Set((state.dismissed && state.dismissed[me]) || []);
   const likedGenres = {};
-  state.list.forEach((e) => { if (e.status === "seen" && rating(state, e.r && e.r[me]) > 0) (e.g || []).forEach((g) => { likedGenres[g] = (likedGenres[g] || 0) + 1; }); });
+  state.list.forEach((e) => { if (seenBy(e, me) && rating(state, e.r && e.r[me]) > 0) (e.g || []).forEach((g) => { likedGenres[g] = (likedGenres[g] || 0) + 1; }); });
   const affinity = (it) => (it.g || []).reduce((s, g) => s + (likedGenres[g] || 0), 0);
 
-  const mine = state.list.filter((e) => e.status === "todo" && matches(e, c)).map((e) => Object.assign({}, e, { _list: true }));
+  const mine = state.list.filter((e) => !seenBy(e, me) && matches(e, c)).map((e) => Object.assign({}, e, { _list: true }));
 
   const fresh = [];
   const medias = (c.types || ["film", "serie"]).map(tmdb.mediaOf);
@@ -288,7 +290,7 @@ async function envies(state, text, me, minutes) {
   if (mode === "ai") {
     try {
       const cand = mine.slice(0, 10).concat(fresh.slice(0, 16));
-      const taste = (sign) => state.list.filter((e) => e.status === "seen" && Math.sign(rating(state, e.r && e.r[me])) === sign).slice(-12).map((e) => e.t);
+      const taste = (sign) => state.list.filter((e) => seenBy(e, me) && Math.sign(rating(state, e.r && e.r[me])) === sign).slice(-12).map((e) => e.t);
       const system =
         "Tu aides un couple à choisir quoi regarder. On te donne une envie, un résumé de leurs goûts et une liste de candidats numérotés. " +
         'Choisis jusqu\'à 6 candidats qui répondent le mieux à l\'envie, du meilleur au moins bon. Réponds uniquement par {"picks":[{"id":"…","why":"raison en français, 18 mots maximum"}]}. ' +
@@ -323,7 +325,7 @@ async function upcoming(state, me) {
   const maps = await tmdb.genreMaps();
   const liked = {};
   state.list.forEach((e) => {
-    const w = e.status === "seen" ? rating(state, e.r && e.r[me]) : ((e.w ? e.w[me] : e.by === me) ? 1 : 0.4);
+    const w = seenBy(e, me) ? rating(state, e.r && e.r[me]) : ((e.w ? e.w[me] : e.by === me) ? 1 : 0.4);
     if (w > 0) (e.g || []).forEach((g) => { liked[g] = (liked[g] || 0) + w; });
   });
   const top = Object.keys(liked).sort((a, b) => liked[b] - liked[a]).slice(0, 4);

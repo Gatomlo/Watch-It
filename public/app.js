@@ -112,7 +112,7 @@
   }
   function addEntry(it, status) {
     var e = Object.assign(lite(it), { by: me, at: todayISO(), status: status || 'todo', r: {}, note: '' });
-    if (e.status === 'todo' && S.settings.addFor === 'both') e.w = { M: true, E: true }; // option : voulu par les deux dès l'ajout
+    if (isTodo(e) && S.settings.addFor === 'both') e.w = { M: true, E: true }; // option : voulu par les deux dès l'ajout
     S.list.push(e);
     return e;
   }
@@ -215,7 +215,7 @@
     matchResults(m).forEach(function (c) {
       var e = entry(c.id);
       if (!e) { e = addEntry(c, 'todo'); e.w = { M: true, E: true }; changed = true; ui.matchNew = true; return; }
-      if (e.status !== 'todo') return;
+      if (!isTodo(e)) return;
       if (!e.w || !e.w.M || !e.w.E) { e.w = { M: true, E: true }; changed = true; }
       if (e.no) { delete e.no; changed = true; }
     });
@@ -377,7 +377,7 @@
 
   function refreshAvail(fresh) {
     if (!isAuthenticated || !S) return Promise.resolve();
-    var ids = S.list.filter(function (e) { return e.status === 'todo'; }).map(function (e) { return e.id; });
+    var ids = S.list.filter(function (e) { return isTodo(e); }).map(function (e) { return e.id; });
     if (!ids.length) { AV_AT = Date.now(); return Promise.resolve(); }
     // Actualisation forcée : lots de 40, le serveur contourne alors son cache TMDB.
     var chunks = [];
@@ -398,7 +398,7 @@
   function detectChanges() {
     var changed = false, plats = platsOn();
     S.list.forEach(function (e) {
-      if (e.status !== 'todo' || !AV[e.id]) return;
+      if (!isTodo(e) || !AV[e.id]) return;
       var now = AV[e.id].f, prev = e.av && e.av.f;
       if (!prev) { e.av = { f: now.slice(), at: todayISO() }; changed = true; return; }
       if (sameJson(prev.slice().sort(), now.slice().sort())) return;
@@ -423,7 +423,7 @@
     if (skip !== 'genre' && ui.genres.length && !(it.g || []).some(function (g) { return ui.genres.indexOf(g) >= 0; })) return false;
     if (skip !== 'col' && ui.cols.length) { var en = entry(it.id); if (!en || !(en.l || []).some(function (l) { return ui.cols.indexOf(l) >= 0; })) return false; }
     if (ui.lq && ui.screen !== 'sug') { var eq = entry(it.id) || it; if (!textOk(eq)) return false; }
-    if (skip !== 'who' && ui.who !== 'all') { var ew = entry(it.id); if (ew && ew.status === 'todo' && !whoOk(ew)) return false; }
+    if (skip !== 'who' && ui.who !== 'all') { var ew = entry(it.id); if (ew && isTodo(ew) && !whoOk(ew)) return false; }
     return true;
   }
   // Recherche texte : tous les mots saisis doivent se retrouver (titre, année, genres, note, listes, acteurs, réalisation).
@@ -454,7 +454,7 @@
     scr = scr || ui.screen;
     if (scr === 'sug') { var s = ui.sug[ui.tab]; return s && s.items ? s.items.map(function (x) { return x.item; }) : []; }
     var st = scr === 'seen' ? 'seen' : 'todo';
-    return S.list.filter(function (e) { return e.status === st; });
+    return S.list.filter(function (e) { return st === 'seen' ? isSeen(e) : isTodo(e); });
   }
   function nFilters() { return famsOf(ui.plats).length + ui.cpf.length + ui.genres.length + ui.cols.length + (ui.who !== 'all' ? 1 : 0); }
 
@@ -495,15 +495,15 @@
   }
   function badges(it, av) {
     var a = av || AV[it.id], mine = a ? a.f.filter(function (p) { return platsOn().indexOf(p) >= 0; }) : [], h = '';
-    var e = entry(it.id), al = e && e.alert && e.status === 'todo' ? e.alert : null;
+    var e = entry(it.id), al = e && e.alert && isTodo(e) ? e.alert : null;
     var newP = al && al.k === 'new' && daysSince(al.at) <= 7 ? al.p : null; // « nouveau » : fond vert sur l'icône, 7 jours
     mine.forEach(function (p) { h += platBadge(p, p === newP || (newP != null && famIds(newP).indexOf(p) >= 0)); });
-    var cps = e && e.status === 'todo' ? cpOf(e) : [];
+    var cps = e && isTodo(e) ? cpOf(e) : [];
     cps.forEach(function (c) { h += cpBadge(c); });
     if (al && al.k === 'gone' && daysSince(al.at) <= 21) h += '<span class="badge warn">N’est plus sur ' + esc(pnameOf(al.p)) + '</span>';
     if (e && e.l && e.l.length) e.l.slice(0, 2).forEach(function (l) { var nm = colName(l); if (nm) h += '<span class="badge soft">' + esc(nm) + '</span>'; });
-    if (e && e.status === 'todo' && it.d && it.d > todayISO()) h += '<span class="badge soft">Sortie le ' + fmtDate(it.d) + '</span>';
-    if (e && e.status === 'todo' && it.ty === 'serie') h += progBadge(e, a);
+    if (e && isTodo(e) && it.d && it.d > todayISO()) h += '<span class="badge soft">Sortie le ' + fmtDate(it.d) + '</span>';
+    if (e && isTodo(e) && it.ty === 'serie') h += progBadge(e, a);
     var soon = !!(it.d && it.d > todayISO());
     if (soon) return '<div class="badges">' + h + '</div>';
     if (!a) h += '<span class="badge mut">Plateformes…</span>';
@@ -539,9 +539,22 @@
   // Qui veut le voir : e.w = { M:true, E:true } ; sans e.w, seul celui qui l'a ajouté.
   function wants(e, u) { return e.w ? !!e.w[u] : e.by === u; }
   // Titres ajoutés par l'autre profil, pas encore voulus ni refusés par moi.
+  // « Vu » est personnel : si l'autre veut encore le voir, le titre reste dans son « À voir » (e.sn = qui l'a vu).
+  function isSeen(e) { return e.status === 'seen' || !!(e.sn && e.sn[me]); }
+  function isTodo(e) { return e.status === 'todo' && !(e.sn && e.sn[me]); }
+  function markSeen(e) {
+    var o = me === 'M' ? 'E' : 'M';
+    if (e.status === 'todo' && wants(e, o) && !(e.sn && e.sn[o])) { e.sn = Object.assign({}, e.sn, { [me]: true }); return; }
+    e.status = 'seen';
+  }
+  function markUnseen(e) {
+    var o = me === 'M' ? 'E' : 'M';
+    if (e.status === 'seen') { e.status = 'todo'; e.sn = (e.r && e.r[o] > 0) ? { [o]: true } : {}; }
+    else if (e.sn) { var n = Object.assign({}, e.sn); delete n[me]; e.sn = n; }
+  }
   function pending() {
     var o = me === 'M' ? 'E' : 'M';
-    return S.list.filter(function (e) { return e.status === 'todo' && e.by === o && !wants(e, me) && !(e.no && e.no[me]); }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
+    return S.list.filter(function (e) { return isTodo(e) && e.by === o && !wants(e, me) && !(e.no && e.no[me]); }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
   }
   // Listes qui ne sont pas encore cochées sur la fiche, filtrées par la recherche.
   function colList(id) {
@@ -560,7 +573,7 @@
     }).join('') + '</span>';
   }
   function rowHtml(it, e) {
-    var ghost = !!(e && e.status === 'todo' && !wants(e, me));
+    var ghost = !!(e && isTodo(e) && !wants(e, me));
     return '<button class="row" data-act="open" data-id="' + esc(it.id) + '">' + poster(it) + '<span class="rb"><span class="rt"><span class="title">' + esc(it.t) + '</span>' + (e ? avas(e, ghost) : '') + '</span><span class="meta">' + meta(it) + '</span>' + badges(it) + '</span></button>';
   }
   function back() { return '<button class="icon" data-act="back" aria-label="Retour">' + I('back') + '</button>'; }
@@ -720,14 +733,14 @@
   }
   function castNote() { return ui.castBusy ? '<span class="help">Recherche des acteurs et réalisateurs…</span>' : ''; }
   function todoListHtml() {
-    var todo = S.list.filter(function (e) { return e.status === 'todo'; }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
+    var todo = S.list.filter(function (e) { return isTodo(e); }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
     var shown = todo.filter(function (e) { return passes(e); });
     var q = (ui.lq || '').trim();
     var offer = (!shown.length && norm(q).length >= 2 && !ui.castBusy) ? '<div class="notice addq"><b>« ' + esc(q) + ' » n’est pas dans la liste.</b><button class="btn" data-act="addq">' + I('search') + 'Chercher et ajouter</button></div>' : '';
     return castNote() + offer + (shown.length ? '<div class="list">' + shown.map(function (e) { return rowHtml(e, e); }).join('') + '</div>' : emptyMsg(todo.length, 'Rien dans la liste pour l’instant.<br>Touchez + ou partagez un lien depuis Signal.'));
   }
   function seenListHtml() {
-    var all = S.list.filter(function (e) { return e.status === 'seen'; }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
+    var all = S.list.filter(function (e) { return isSeen(e); }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
     var seen = all.filter(function (e) { return passes(e); });
     function th(e, u) { var r = e.r[u]; return '<span class="badge' + (r ? '' : ' mut') + '">' + esc(initial(u)) + ' ' + (r ? '★ ' + r : 'pas noté') + '</span>'; }
     return castNote() + (seen.length ? '<div class="list">' + seen.map(function (e) {
@@ -735,7 +748,7 @@
     }).join('') + '</div>' : emptyMsg(all.length, 'Rien de vu pour l’instant. Marquez un titre comme vu pour le noter.'));
   }
   V.home = function () {
-    var todo = S.list.filter(function (e) { return e.status === 'todo'; });
+    var todo = S.list.filter(function (e) { return isTodo(e); });
     var nAv = todo.filter(function (e) { return avail(e).length; }).length;
     var sub = todo.length + ' titre' + (todo.length > 1 ? 's' : '') + (platsOn().length ? ' · ' + nAv + ' dispo sur vos plateformes' : '');
     var pend = pending(), o = me === 'M' ? 'E' : 'M';
@@ -746,7 +759,7 @@
       filterBar('<button class="fbtn rand" data-act="draw">' + I('dice') + 'Au hasard</button>') + '<div id="lst">' + todoListHtml() + '</div>';
   };
   V.seen = function () {
-    var all = S.list.filter(function (e) { return e.status === 'seen'; });
+    var all = S.list.filter(function (e) { return isSeen(e); });
     return header('Vus', all.length + ' titre' + (all.length > 1 ? 's' : '') + ' · vos notes alimentent les suggestions') + searchBox('Rechercher : titre, acteur, genre, note…') + filterBar() + '<div id="lst">' + seenListHtml() + '</div>';
   };
 
@@ -792,13 +805,13 @@
       if (saOn() && linkOpt('plat') && ui.lk[id] === 'loading') where += '<span class="help">Recherche du lien direct…</span>';
     } else where = skeletons(1);
     var rates = '';
-    if (e && e.status === 'seen') {
+    if (e && isSeen(e)) {
       rates = '<div class="group"><h2>Notre avis</h2>' + ['M', 'E'].map(function (u) {
         return '<div class="card"><span class="ava ' + u + '">' + esc(initial(u)) + '</span><span class="ct"><b>' + esc(pname(u)) + '</b></span>' + starRow(e.r[u] || 0, 'setr', 'data-id="' + esc(id) + '" data-u="' + u + '"', 'sm') + '</div>';
       }).join('') + '</div>';
     }
     var prog = '';
-    if (e && e.ty === 'serie' && e.status === 'todo') {
+    if (e && e.ty === 'serie' && isTodo(e)) {
       var a2 = d ? { se: d.seasonsInfo, last: d.lastEp, next: d.nextEp, ended: d.ended } : AV[id];
       if (a2 && a2.se && a2.se.length) {
         var p0 = e.prog || {}, nx = nextEp(e, a2), cnt = a2.se.filter(function (x) { return x.n === p0.s; })[0];
@@ -811,7 +824,7 @@
       }
     }
     var wg = '';
-    if (e && e.status === 'todo') {
+    if (e && isTodo(e)) {
       wg = '<div class="group"><h2>Qui veut le voir ?</h2><div class="chips">' + ['M', 'E'].map(function (u) { var on = wants(e, u); return '<button class="chip p' + (on ? ' on' : '') + '" data-act="want" data-id="' + esc(id) + '" data-u="' + u + '" aria-pressed="' + on + '">' + esc(pname(u)) + '</button>'; }).join('') + '</div><span class="help">Ajouté par ' + esc(pname(e.by)) + ' le ' + fmtDate(e.at) + '</span></div>';
     }
     var colg = '';
@@ -826,14 +839,14 @@
     }
     var note = '';
     if (e) {
-      var by = e.status === 'todo' ? '' : '<span class="help">Ajouté par ' + esc(pname(e.by)) + ' le ' + fmtDate(e.at) + '</span>';
+      var by = isTodo(e) ? '' : '<span class="help">Ajouté par ' + esc(pname(e.by)) + ' le ' + fmtDate(e.at) + '</span>';
       if (ui.noteEdit === id) note = '<div class="group"><h2>Notre note</h2><label for="note" style="position:absolute;left:-9999px">Note sur ce titre</label><textarea id="note" class="ta" rows="3" placeholder="Pourquoi on veut le voir, qui l’a conseillé…" data-draft="1">' + esc(ui.noteDraft != null ? ui.noteDraft : (e.note || '')) + '</textarea><div style="display:flex;gap:10px"><button class="btn ghost" style="height:44px" data-act="notecancel">Annuler</button><button class="btn" style="height:44px" data-act="notesave" data-id="' + esc(id) + '">Enregistrer</button></div></div>';
       else note = '<div class="group"><div class="sec"><h2>Notre note</h2><button class="link" style="min-height:44px" data-act="noteedit" data-id="' + esc(id) + '">' + (e.note ? 'Modifier' : 'Ajouter une note') + '</button></div>' + (e.note ? '<p class="syn" style="margin:0;white-space:pre-wrap;overflow-wrap:anywhere">' + esc(e.note) + '</p>' : '<span class="help">Pas de note pour l’instant.</span>') + by + '</div>';
     }
     var dock;
     var rm = '<button class="icon" style="width:52px;height:52px;border-radius:26px" data-act="remove" data-id="' + esc(id) + '" aria-label="Supprimer de la liste">' + I('trash') + '</button>';
     if (!e) dock = '<button class="btn" data-act="add" data-id="' + esc(id) + '">Ajouter à ma liste</button><button class="btn ghost" style="flex:none;width:auto" data-act="already" data-id="' + esc(id) + '">Déjà vu</button>';
-    else if (e.status === 'todo') dock = '<button class="btn" data-act="askseen" data-id="' + esc(id) + '">Marquer comme vu</button>' + rm;
+    else if (isTodo(e)) dock = '<button class="btn" data-act="askseen" data-id="' + esc(id) + '">Marquer comme vu</button>' + rm;
     else dock = '<button class="btn ghost" data-act="unseen" data-id="' + esc(id) + '">Remettre à voir</button>' + rm;
     var gen = (it.g || []).join(', ');
     var tn = tonightLive(), prop = tn && tn.id === id && tn.st !== 'no' ? '<span class="st ok">' + (tn.st === 'ok' ? 'Prévu ce soir' : 'Proposé ce soir') + '</span>' : '<button class="btn ghost" style="height:44px" data-act="tonight" data-id="' + esc(id) + '">Proposer ce soir à ' + esc(pname(me === 'M' ? 'E' : 'M')) + '</button>';
@@ -853,9 +866,9 @@
     var eps = ui.epData[id + ':' + sn];
     if (!eps) return h + (ui.epErr[id + ':' + sn] ? errBox(ui.epErr[id + ':' + sn], 'epretry') : skeletons(2)) + '</div>';
     if (!eps.length) return h + '<div class="empty">Aucun épisode référencé pour cette saison.</div></div>';
-    var p = (e && e.prog) || {}, today = todayISO(), tracking = e && e.status === 'todo';
+    var p = (e && e.prog) || {}, today = todayISO(), tracking = e && isTodo(e);
     h += '<div class="eps">' + eps.map(function (x) {
-      var seen = !!e && (e.status === 'seen' || sn < (p.s || 0) || (sn === p.s && x.e <= (p.e || 0)));
+      var seen = !!e && (isSeen(e) || sn < (p.s || 0) || (sn === p.s && x.e <= (p.e || 0)));
       var aired = !!x.date && x.date <= today, key = sn + '-' + x.e, exp = !!ui.epExp[key];
       var chk = tracking ? (aired ? '<button class="epc' + (seen ? ' on' : '') + '" data-act="epset" data-s="' + sn + '" data-e="' + x.e + '" aria-pressed="' + seen + '" aria-label="' + (seen ? 'Épisode ' + x.e + ' vu' : 'Marquer vu jusqu’à l’épisode ' + x.e) + '">' + I('check') + '</button>' : '<span class="epc dis" aria-hidden="true"></span>') : (e ? '<span class="epc on" aria-hidden="true">' + I('check') + '</span>' : '<span class="epc dis" aria-hidden="true"></span>');
       return '<div class="ep">' + chk + '<button class="epi" data-act="epinfo" data-k="' + key + '" aria-expanded="' + exp + '"><span class="ept"><b>' + x.e + '.</b> ' + esc(x.name || 'Épisode ' + x.e) + '</span><span class="epm">' + (x.date ? esc(fmtDate(x.date)) + (aired ? '' : ' · à venir') : 'Date inconnue') + (x.len ? ' · ' + x.len + ' min' : '') + '</span>' + (x.ov ? '<span class="epo' + (exp ? ' open' : '') + '">' + esc(x.ov) + '</span>' : '') + '</button></div>';
@@ -1024,7 +1037,7 @@
         (g.res.length ? g.res.map(function (c) {
           var inL = entry(c.id);
           return '<div class="sug" style="align-items:center"><button class="row" style="gap:12px;align-items:center" data-act="open" data-id="' + esc(c.id) + '">' + poster(c, 'sm') + '<span class="rb"><span class="title" style="font-size:16px">' + esc(c.t) + '</span><span class="meta" style="font-size:12px">' + meta(c) + '</span></span></button>' +
-            (inL ? '<span class="st ok">' + (inL.status === 'seen' ? 'Vu' : 'Dans la liste') + '</span>' : '') + '</div>';
+            (inL ? '<span class="st ok">' + (isSeen(inL) ? 'Vu' : 'Dans la liste') + '</span>' : '') + '</div>';
         }).join('') : '<div class="empty">Aucun match.</div>');
     }).join('') + '</div>';
   }
@@ -1062,7 +1075,7 @@
     h += '<div class="group"><div class="sec"><h2>Matchs</h2><span class="mbad">' + res.length + '</span></div>' + (res.length ? res.map(function (c) {
       var inL = entry(c.id);
       return '<div class="sug" style="align-items:center"><button class="row" style="gap:12px;align-items:center" data-act="open" data-id="' + esc(c.id) + '">' + poster(c, 'sm') + '<span class="rb"><span class="title" style="font-size:16px">' + esc(c.t) + '</span><span class="meta" style="font-size:12px">' + meta(c) + '</span></span></button>' +
-        (inL ? '<span class="st ok">' + (inL.status === 'seen' ? 'Vu' : 'Dans la liste') + '</span>' : '') + '</div>';
+        (inL ? '<span class="st ok">' + (isSeen(inL) ? 'Vu' : 'Dans la liste') + '</span>' : '') + '</div>';
     }).join('') : '<div class="empty">Pas encore de titre voulu par vous deux.</div>') + '</div>' + matchHistView() +
       '<div class="group"><h2>Nouvelle partie</h2>' + matchTypeSeg() + matchSrcSeg() + '<button class="btn ghost" style="height:44px" data-act="matchstart">Lancer et inviter ' + esc(pname(ot)) + '</button></div>';
     return h;
@@ -1169,7 +1182,7 @@
 
   function setProfils() {
     var cnt = { M: 0, E: 0 };
-    S.list.forEach(function (e) { if (e.status === 'seen') { if (e.r.M) cnt.M++; if (e.r.E) cnt.E++; } });
+    S.list.forEach(function (e) { if (isSeen(e)) { if (e.r.M) cnt.M++; if (e.r.E) cnt.E++; } });
     var af = S.settings.addFor === 'both' ? 'both' : 'me';
     var addFor = '<div class="group"><h2>Quand j’ajoute un titre à voir</h2><div class="seg" role="group" aria-label="Qui veut le voir par défaut">' + [['me', 'Moi seul'], ['both', 'Nous deux']].map(function (x) { return '<button class="chip' + (af === x[0] ? ' on' : '') + '" data-act="addfor" data-v="' + x[0] + '" aria-pressed="' + (af === x[0]) + '">' + x[1] + '</button>'; }).join('') + '</div><span class="help">' + (af === 'both' ? 'Le titre est marqué comme voulu par vous deux ; l’autre n’est pas notifié. Chacun peut retirer son envie depuis la fiche.' : 'Seul celui qui l’ajoute le veut ; l’autre est notifié et peut répondre « Moi aussi ».') + '</span></div>';
     return subHeader('Profils') +
@@ -1470,7 +1483,7 @@
     var cell = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
     var lines = [['Titre', 'Année', 'Type', 'Statut', 'Genres', 'Note ' + pname('M'), 'Note ' + pname('E'), 'Ajouté par', 'Date', 'Note'].map(cell).join(',')];
     S.list.forEach(function (e) {
-      lines.push([e.t, e.y, e.ty === 'film' ? 'Film' : 'Série', e.status === 'seen' ? 'Vu' : 'À voir', (e.g || []).join('; '), e.r.M || '', e.r.E || '', pname(e.by), e.at, e.note].map(cell).join(','));
+      lines.push([e.t, e.y, e.ty === 'film' ? 'Film' : 'Série', isSeen(e) ? 'Vu' : 'À voir', (e.g || []).join('; '), e.r.M || '', e.r.E || '', pname(e.by), e.at, e.note].map(cell).join(','));
     });
     var blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'maiwatch-' + todayISO() + '.csv';
@@ -1582,7 +1595,7 @@
     retrysug: function () { ui.sug[ui.tab] = null; render(true); },
     drawwho: function (d) { ui.drawWho = d.v; ui.sheet = null; A.draw(); },
     draw: function () {
-      var ids = S.list.filter(function (e) { return e.status === 'todo' && passes(e, 'who') && whoOk(e, drawWho()) && (!availKnown(e) || !platsOn().length || avail(e).length); }).map(function (e) { return e.id; });
+      var ids = S.list.filter(function (e) { return isTodo(e) && passes(e, 'who') && whoOk(e, drawWho()) && (!availKnown(e) || !platsOn().length || avail(e).length); }).map(function (e) { return e.id; });
       var prev = ui.sheet && ui.sheet.id, p2 = ids.filter(function (i) { return i !== prev; }); if (p2.length) ids = p2;
       ui.sheet = { type: 'draw', id: ids.length ? ids[Math.floor(Math.random() * ids.length)] : null }; render(true);
     },
@@ -1597,17 +1610,17 @@
     already: function (d) {
       var it = itemOf(d.id); if (!it) return;
       var e = entry(d.id);
-      if (!e) addEntry(it, 'seen'); else { e.status = 'seen'; e.at = todayISO(); }
+      if (!e) addEntry(it, 'seen'); else { markSeen(e); e.at = todayISO(); }
       save(); ui.sheet = { type: 'rate', id: d.id }; render(true);
     },
     askseen: function (d) { ui.sheet = { type: 'rate', id: d.id }; render(true); },
     setr: function (d) { var e = entry(d.id); if (!e) return; e.r[d.u] = e.r[d.u] === +d.v ? 0 : +d.v; save(); render(true); },
     rate: function (d) {
       var e = entry(d.id); if (!e) return;
-      e.status = 'seen'; e.at = todayISO(); delete e.alert; if (+d.v) e.r[me] = +d.v; save(); ui.sheet = null; render(true);
+      markSeen(e); e.at = todayISO(); delete e.alert; if (+d.v) e.r[me] = +d.v; save(); ui.sheet = null; render(true);
       toast(+d.v ? 'Noté ' + d.v + ' ★ · vos suggestions s’affinent' : 'Marqué comme vu');
     },
-    unseen: function (d) { var e = entry(d.id); e.status = 'todo'; save(); refreshAvail(); render(true); toast('Remis dans « À voir »'); },
+    unseen: function (d) { var e = entry(d.id); markUnseen(e); save(); refreshAvail(); render(true); toast('Remis dans « À voir »'); },
     remove: function (d) {
       var e = entry(d.id), i = S.list.indexOf(e); S.list.splice(i, 1); save();
       var h = ui.hist.pop(); ui.screen = h ? h.screen : 'home'; ui.detail = h ? h.detail : null; render(true);
@@ -1685,7 +1698,7 @@
     epinfo: function (d) { ui.epExp[d.k] = !ui.epExp[d.k]; render(true); },
     epretry: function () { var k = ui.detail + ':' + ui.epSeason; delete ui.epData[k]; loadSeason(ui.detail, ui.epSeason); render(true); },
     epset: function (d) {
-      var e = entry(ui.detail); if (!e || e.status !== 'todo') return;
+      var e = entry(ui.detail); if (!e || !isTodo(e)) return;
       var s = Number(d.s), n = Number(d.e), p = e.prog || {};
       if (p.s === s && p.e === n) {
         // re-toucher le dernier épisode vu le décoche : retour à l'épisode précédent
@@ -1748,7 +1761,7 @@
       Promise.all([api('/api/suggestions?tab=both&me=' + me).catch(function () { return []; }), api('/api/suggestions?tab=me&me=' + me).catch(function () { return []; })]).then(function (r) {
         var pool = {}, inL = [], inS = [], ty = ui.matchTy, src = ui.matchSrc, tyOk = function (it) { return ty === 'all' || it.ty === ty; };
         var shuffle = function (a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; } return a; };
-        if (src !== 'out') S.list.forEach(function (e) { if (e.status === 'todo' && tyOk(e) && (!availKnown(e) || !plats.length || avail(e).length)) { pool[e.id] = card(e, AV[e.id] && AV[e.id].f); inL.push(e.id); } });
+        if (src !== 'out') S.list.forEach(function (e) { if (isTodo(e) && tyOk(e) && (!availKnown(e) || !plats.length || avail(e).length)) { pool[e.id] = card(e, AV[e.id] && AV[e.id].f); inL.push(e.id); } });
         if (src !== 'list') r[0].concat(r[1]).forEach(function (x) { know(x.item); if (tyOk(x.item) && !pool[x.item.id] && !entry(x.item.id)) { pool[x.item.id] = card(x.item, x.item.av.f); inS.push(x.item.id); } });
         var ids;
         if (src === 'mix') { // moitié liste, moitié hors liste (l'un complète l'autre s'il en manque)
@@ -1789,7 +1802,7 @@
       var c = m.deck.filter(function (x) { return x.id === d.id; })[0];
       if (+d.v === 2 && c) { // « Pas ce soir » : gardé dans la liste, mais pas un match pour cette soirée
         var e = entry(c.id) || addEntry(c, 'todo');
-        if (e.status === 'todo') { var w = Object.assign({}, e.w || {}); if (!e.w && e.by) w[e.by] = true; w[me] = true; e.w = w; save(); render(true); }
+        if (isTodo(e)) { var w = Object.assign({}, e.w || {}); if (!e.w && e.by) w[e.by] = true; w[me] = true; e.w = w; save(); render(true); }
         toast('« ' + c.t + ' » ajouté à votre liste, pas pour ce soir.');
         return;
       }
@@ -1801,7 +1814,7 @@
     matchseen: function (d) {
       var m = S.match, c = m && m.deck.filter(function (x) { return x.id === d.id; })[0]; if (!c) return;
       var e = entry(c.id);
-      if (!e) addEntry(c, 'seen'); else { e.status = 'seen'; e.at = todayISO(); }
+      if (!e) addEntry(c, 'seen'); else { markSeen(e); e.at = todayISO(); }
       m.votes[me] = m.votes[me] || {}; m.votes[me][c.id] = -1; // un titre déjà vu ne peut pas être un match
       save(); ui.sheet = { type: 'rate', id: c.id }; render(true);
     },
@@ -1931,7 +1944,7 @@
       ui.impRows.forEach(function (r) {
         if (!r.item) return;
         var e = entry(r.item.id);
-        if (!e) e = addEntry(r.item, 'seen'); else { e.status = 'seen'; }
+        if (!e) e = addEntry(r.item, 'seen'); else { markSeen(e); }
         if (r.r) e.r[me] = r.r; n++;
       });
       save(); ui.impRows = null; ui.hist = []; ui.screen = 'settings'; render(); toast(n + ' titre' + (n > 1 ? 's' : '') + ' importé' + (n > 1 ? 's' : '') + ' dans « Vus »');
